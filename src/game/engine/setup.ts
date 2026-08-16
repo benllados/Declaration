@@ -1,11 +1,13 @@
 import { GameDomainError } from "../errors";
 import { createTeams, validateTeamComposition } from "../teams";
-import type { Player, PlayerSetup } from "../types/player";
+import type { Player, PlayerId, PlayerSetup } from "../types/player";
 import type { Team } from "../types/team";
 import { dealInitialHands, shuffleCanonicalDeck, type Random } from "./deal";
+import { createNormalPlayState, type NormalPlayGameState } from "./normal-play";
 
 export type GameSetupInput = Readonly<{ players: readonly PlayerSetup[] }>;
 export type InitialGameState = Readonly<{ players: readonly Player[]; teams: readonly Team[] }>;
+export type NormalPlaySetupInput = GameSetupInput & Readonly<{ initialTurnOwner: PlayerId }>;
 
 export const validateGameSetup = (input: GameSetupInput): void => {
   if (!input || !Array.isArray(input.players)) throw new GameDomainError("Game setup must include a players array.");
@@ -18,5 +20,17 @@ export const initializeGame = (input: GameSetupInput, random: Random = Math.rand
   return Object.freeze({
     players: Object.freeze(input.players.map((player) => Object.freeze({ ...player, hand: hands.get(player.id)! }))),
     teams: createTeams(input.players),
+  });
+};
+
+/** Deals a game and starts normal play with the caller-provided first turn owner. */
+export const initializeNormalPlayGame = (
+  input: NormalPlaySetupInput,
+  random: Random = Math.random,
+): NormalPlayGameState => {
+  const initialGame = initializeGame({ players: input.players }, random);
+  return createNormalPlayState({
+    players: initialGame.players,
+    currentTurnOwner: input.initialTurnOwner,
   });
 };
