@@ -1,5 +1,5 @@
 import { CANONICAL_DECK, type CardId } from "../cards";
-import { DECLARATION_TIME_LIMIT_SECONDS, TOTAL_SETS } from "../constants/game";
+import { DECLARATION_TIME_LIMIT_SECONDS, TEAM_SIZE, TOTAL_SETS } from "../constants/game";
 import { GameDomainError } from "../errors";
 import { getCardsInSet, getSetForCard, SET_IDS, type SetId } from "../sets";
 import { createTeams, validateTeamComposition } from "../teams";
@@ -98,6 +98,7 @@ const validateActiveDeclaration = (
     !Number.isFinite(activeDeclaration.startedAt)
     || !Number.isFinite(activeDeclaration.deadline)
     || activeDeclaration.deadline !== activeDeclaration.startedAt + DECLARATION_TIME_LIMIT_SECONDS
+    || activeDeclaration.deadline - activeDeclaration.startedAt !== DECLARATION_TIME_LIMIT_SECONDS
   ) {
     throw new GameDomainError("Active declaration must use an exact authoritative 90-second deadline.");
   }
@@ -119,7 +120,10 @@ const validateActiveDeclaration = (
 export const teamHasZeroActiveCards = (
   players: readonly Player[],
   teamId: TeamId,
-): boolean => players.filter((player) => player.teamId === teamId).every((player) => player.hand.length === 0);
+): boolean => {
+  const teamPlayers = players.filter((player) => player.teamId === teamId);
+  return teamPlayers.length === TEAM_SIZE && teamPlayers.every((player) => player.hand.length === 0);
+};
 
 /** Alias that reads naturally at transition call sites. */
 export const hasTeamReachedZeroActiveCards = teamHasZeroActiveCards;
@@ -185,13 +189,12 @@ export const createNormalPlayState = (input: NormalPlayStateInput): NormalPlayGa
     validateActiveDeclaration(activeDeclaration, input.players, resolvedSetIds);
   }
   const inferredPhase = activeDeclaration !== null
-    ? "DECLARING"
+    ? activeDeclaration.mode === "BLIND" ? "BLIND_DECLARATION" : "DECLARING"
     : resolvedSetIds.length === TOTAL_SETS
       ? "GAME_OVER"
-      : input.blindDeclarationTeamId !== undefined
+      : input.blindDeclarationTeamId !== undefined && input.blindDeclarationTeamId !== null
         ? "BLIND_DECLARATION"
-        // This preserves the frozen-state construction API used by Build 06.
-        : input.normalAskingAllowed === false ? "DECLARING" : "PLAYING";
+        : "PLAYING";
   const phase = input.phase ?? inferredPhase;
   if (!isGamePhase(phase)) throw new GameDomainError("Normal-play phase must be a known lifecycle phase.");
 
@@ -200,16 +203,25 @@ export const createNormalPlayState = (input: NormalPlayStateInput): NormalPlayGa
   const requestedWinnerTeamId = input.winnerTeamId ?? null;
   const normalAskingAllowed = phase === "PLAYING";
 
+  if (input.normalAskingAllowed !== undefined && input.normalAskingAllowed !== normalAskingAllowed) {
+    throw new GameDomainError("Normal-play asking availability must match the authoritative game phase.");
+  }
+
   if (phase === "PLAYING") {
     if (activeDeclaration !== null || blindDeclarationTeamId !== null || blindDeclarerId !== null || requestedWinnerTeamId !== null) {
       throw new GameDomainError("Playing state cannot retain declaration, Blind Declaration, or winner state.");
     }
+    if (getTeamWithZeroActiveCards(input.players) !== null) {
+      throw new GameDomainError("Playing state must enter Blind Declaration when a team has zero active cards.");
+    }
   }
-  if (phase === "DECLARING" && requestedWinnerTeamId !== null) {
-    throw new GameDomainError("Declaring state cannot retain a winner.");
-  }
-  if (phase === "DECLARING" && activeDeclaration?.mode === "BLIND") {
-    throw new GameDomainError("A Blind Declaration remains in Blind Declaration Mode while active.");
+  if (phase === "DECLARING") {
+    if (requestedWinnerTeamId !== null) {
+      throw new GameDomainError("Declaring state cannot retain a winner.");
+    }
+    if (activeDeclaration === null || activeDeclaration.mode !== "NORMAL") {
+      throw new GameDomainError("Declaring state requires an active normal declaration.");
+    }
   }
   if (phase === "BLIND_DECLARATION") {
     if (
@@ -222,6 +234,11 @@ export const createNormalPlayState = (input: NormalPlayStateInput): NormalPlayGa
     const zeroCardTeamId = getTeamWithZeroActiveCards(input.players);
     if (zeroCardTeamId === null || blindDeclarationTeamId !== getOpposingTeamId(zeroCardTeamId)) {
       throw new GameDomainError("Blind Declaration team must oppose the sole team with zero active cards.");
+    }
+    if (activeDeclaration !== null && (
+      blindDeclarerId === null || activeDeclaration.declarerId !== blindDeclarerId
+    )) {
+      throw new GameDomainError("An active Blind Declaration requires its selected Blind Declarer.");
     }
   } else if (blindDeclarationTeamId !== null || blindDeclarerId !== null) {
     if (phase !== "GAME_OVER") {
@@ -236,6 +253,10 @@ export const createNormalPlayState = (input: NormalPlayStateInput): NormalPlayGa
     if (!blindDeclarer || blindDeclarer.teamId !== blindDeclarationTeamId) {
       throw new GameDomainError("Blind Declarer must be a player on the Blind Declaration team.");
     }
+  }
+
+  if (resolvedSetIds.length === TOTAL_SETS && phase !== "GAME_OVER") {
+    throw new GameDomainError("All resolved sets require the terminal game-over phase.");
   }
 
   const activeCards = input.players.flatMap((player) => player.hand);
@@ -261,6 +282,9 @@ export const createNormalPlayState = (input: NormalPlayStateInput): NormalPlayGa
     winnerTeamId = scores.TEAM_A > scores.TEAM_B ? "TEAM_A" : "TEAM_B";
     if (requestedWinnerTeamId !== null && requestedWinnerTeamId !== winnerTeamId) {
       throw new GameDomainError("Game-over winner must match the final score.");
+    }
+    if (blindDeclarationTeamId !== null && blindDeclarerId === null) {
+      throw new GameDomainError("Completed Blind Declaration games retain their selected Blind Declarer.");
     }
   } else if (requestedWinnerTeamId !== null) {
     throw new GameDomainError("Only a game-over state may retain a winner.");

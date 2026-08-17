@@ -35,7 +35,6 @@ type StateOptions = Readonly<{
   currentTurnOwner?: PlayerId;
   hands?: Partial<Record<keyof typeof ids, readonly CardId[]>>;
   resolvedSetIds?: readonly SetId[];
-  normalAskingAllowed?: boolean;
 }>;
 
 /**
@@ -46,7 +45,6 @@ const createState = ({
   currentTurnOwner = ids.one,
   hands = {},
   resolvedSetIds = [],
-  normalAskingAllowed = true,
 }: StateOptions = {}): NormalPlayGameState => {
   const initialState = initializeNormalPlayGame({ players, initialTurnOwner: currentTurnOwner }, () => 0);
   const activeCards = CANONICAL_DECK
@@ -54,11 +52,11 @@ const createState = ({
     .filter((cardId) => !resolvedSetIds.includes(getSetForCard(cardId)));
   const explicitHandKeys = Object.keys(hands) as (keyof typeof ids)[];
   const assignedCards = explicitHandKeys.flatMap((key) => hands[key] ?? []);
-  const fallbackKey = (Object.keys(ids) as (keyof typeof ids)[]).find(
+  const fallbackKeys = (Object.keys(ids) as (keyof typeof ids)[]).filter(
     (key) => !explicitHandKeys.includes(key),
   );
 
-  if (!fallbackKey) throw new Error("The test state requires one player to receive remaining cards.");
+  if (fallbackKeys.length === 0) throw new Error("The test state requires a player to receive remaining cards.");
   if (new Set(assignedCards).size !== assignedCards.length) throw new Error("Test cards must be unique.");
 
   const remainingCards = activeCards.filter((cardId) => !assignedCards.includes(cardId));
@@ -67,12 +65,13 @@ const createState = ({
       const key = (Object.keys(ids) as (keyof typeof ids)[]).find((candidate) => ids[candidate] === player.id)!;
       return {
         ...player,
-        hand: hands[key] ?? (key === fallbackKey ? remainingCards : []),
+        hand: hands[key] ?? remainingCards.filter(
+          (_, index) => fallbackKeys[index % fallbackKeys.length] === key,
+        ),
       };
     }),
     currentTurnOwner,
     resolvedSetIds,
-    normalAskingAllowed,
     scores: { TEAM_A: resolvedSetIds.length, TEAM_B: 0 },
   });
 };
@@ -223,17 +222,6 @@ describe("ask legality", () => {
     });
   });
 
-  it("rejects asking when normal asking is not available", () => {
-    const state = createState({
-      hands: { one: ["3H"], four: ["2H"] },
-      normalAskingAllowed: false,
-    });
-
-    expect(validateAsk(state, ask(ids.one, ids.four, "2H"))).toEqual({
-      status: "ILLEGAL",
-      reason: "NORMAL_ASKING_NOT_ALLOWED",
-    });
-  });
 });
 
 describe("successful asks", () => {

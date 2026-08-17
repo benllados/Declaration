@@ -60,15 +60,20 @@ const createState = ({
 }: StateOptions = {}): NormalPlayGameState => {
   const explicitKeys = Object.keys(hands) as (keyof typeof ids)[];
   const explicitCards = explicitKeys.flatMap((key) => hands[key] ?? []);
-  const fallbackKey = (Object.keys(ids) as (keyof typeof ids)[]).find((key) => !explicitKeys.includes(key));
-  if (!fallbackKey) throw new Error("One player must receive cards not explicitly assigned by this test.");
+  const fallbackKeys = (Object.keys(ids) as (keyof typeof ids)[]).filter((key) => !explicitKeys.includes(key));
+  if (fallbackKeys.length === 0) throw new Error("A player must receive cards not explicitly assigned by this test.");
 
   const remainingCards = allCardsForUnresolvedSets(resolvedSetIds)
     .filter((cardId) => !explicitCards.includes(cardId));
   return createNormalPlayState({
     players: players.map((player) => {
       const key = (Object.keys(ids) as (keyof typeof ids)[]).find((candidate) => ids[candidate] === player.id)!;
-      return { ...player, hand: hands[key] ?? (key === fallbackKey ? remainingCards : []) };
+      return {
+        ...player,
+        hand: hands[key] ?? remainingCards.filter(
+          (_, index) => fallbackKeys[index % fallbackKeys.length] === key,
+        ),
+      };
     }),
     currentTurnOwner: ids.one,
     resolvedSetIds,
@@ -119,7 +124,11 @@ describe("zero-card team detection and lifecycle transitions", () => {
     expect(teamHasZeroActiveCards(oneAndTwoEmpty.players, "TEAM_A")).toBe(false);
     expect(getTeamWithZeroActiveCards(oneAndTwoEmpty.players)).toBeNull();
 
-    const allTeamAEmpty = createState({ hands: { one: [], two: [], three: [], four: ["2H"] } });
+    const allTeamAEmpty = createState({
+      phase: "BLIND_DECLARATION",
+      hands: { one: [], two: [], three: [], four: ["2H"] },
+      blindDeclarationTeamId: "TEAM_B",
+    });
     expect(teamHasZeroActiveCards(allTeamAEmpty.players, "TEAM_A")).toBe(true);
     expect(getTeamWithZeroActiveCards(allTeamAEmpty.players)).toBe("TEAM_A");
   });
@@ -148,15 +157,19 @@ describe("zero-card team detection and lifecycle transitions", () => {
   it("ends the game instead of entering Blind Declaration when the final set resolves", () => {
     const resolvedSetIds = SET_IDS.filter((setId) => setId !== "LOW_HEARTS");
     const state = createState({
+      phase: "BLIND_DECLARATION",
       resolvedSetIds,
       scores: { TEAM_A: 8, TEAM_B: 0 },
       hands: { one: getCardsInSet("LOW_HEARTS"), four: [] },
+      blindDeclarationTeamId: "TEAM_A",
+      blindDeclarerId: ids.one,
     });
     const started = startDeclaration(state, { declarerId: ids.one, selectedSetId: "LOW_HEARTS", startedAt: 10 });
     const resolved = submitDeclaration(started.state, correctSubmission(started.state, 11));
 
     expect(resolved.state.phase).toBe("GAME_OVER");
-    expect(resolved.state.blindDeclarationTeamId).toBeNull();
+    expect(resolved.state.blindDeclarationTeamId).toBe("TEAM_A");
+    expect(resolved.state.blindDeclarerId).toBe(ids.one);
     expect(resolved.state.winnerTeamId).toBe("TEAM_A");
   });
 });
@@ -239,9 +252,18 @@ describe("Blind Declaration resolution", () => {
 
 describe("complete game lifecycle", () => {
   const resolveCompleteGame = (): NormalPlayGameState => {
-    let state = createState({ hands: { one: CANONICAL_DECK.map((card) => card.id), four: [] } });
+    let state = createState({
+      hands: {
+        one: CANONICAL_DECK.map((card) => card.id).filter((cardId) => !getCardsInSet("LOW_HEARTS").includes(cardId)),
+        four: getCardsInSet("LOW_HEARTS"),
+      },
+    });
     const first = startDeclaration(state, { declarerId: ids.one, selectedSetId: "LOW_HEARTS", startedAt: 0 });
-    state = submitDeclaration(first.state, correctSubmission(first.state, 1)).state;
+    state = submitDeclaration(first.state, {
+      declarerId: ids.one,
+      assignments: getCardsInSet("LOW_HEARTS").map((cardId) => ({ cardId, playerId: ids.one })),
+      submittedAt: 1,
+    }).state;
     state = selectBlindDeclarer(state, ids.one).state;
 
     const remainingSetIds = SET_IDS.filter((setId) => setId !== "LOW_HEARTS");
@@ -256,13 +278,13 @@ describe("complete game lifecycle", () => {
     return state;
   };
 
-  it("resolves all nine sets into a terminal 5-4 game with a deterministic winner", () => {
+  it("resolves all nine sets into a terminal 4-5 game with a deterministic winner", () => {
     const state = resolveCompleteGame();
     expect(state.phase).toBe("GAME_OVER");
     expect(state.resolvedSetIds).toHaveLength(9);
-    expect(state.scores).toEqual({ TEAM_A: 5, TEAM_B: 4 });
-    expect(getWinnerTeamId(state)).toBe("TEAM_A");
-    expect(state.winnerTeamId).toBe("TEAM_A");
+    expect(state.scores).toEqual({ TEAM_A: 4, TEAM_B: 5 });
+    expect(getWinnerTeamId(state)).toBe("TEAM_B");
+    expect(state.winnerTeamId).toBe("TEAM_B");
     expect(state.activeDeclaration).toBeNull();
     expect(state.players.flatMap((player) => player.hand)).toEqual([]);
     expectConservation(state);

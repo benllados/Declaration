@@ -38,6 +38,7 @@ export type DeclarationSubmission = Readonly<{
 }>;
 
 export const INVALID_DECLARATION_START_REASONS = [
+  "INVALID_DECLARATION_ACTION",
   "INVALID_DECLARER",
   "INVALID_SELECTED_SET",
   "SET_ALREADY_RESOLVED",
@@ -51,6 +52,7 @@ export const INVALID_DECLARATION_START_REASONS = [
 export type InvalidDeclarationStartReason = (typeof INVALID_DECLARATION_START_REASONS)[number];
 
 export const INVALID_DECLARATION_SUBMISSION_REASONS = [
+  "INVALID_SUBMISSION",
   "NO_ACTIVE_DECLARATION",
   "WRONG_DECLARER",
   "INVALID_SUBMISSION_TIMESTAMP",
@@ -134,6 +136,23 @@ const isCanonicalCardId = (value: unknown): value is CardId =>
 const isFiniteTimestamp = (value: unknown): value is AuthoritativeTimestamp =>
   typeof value === "number" && Number.isFinite(value);
 
+const isStartDeclarationAction = (value: unknown): value is StartDeclarationAction =>
+  typeof value === "object"
+  && value !== null
+  && "declarerId" in value
+  && "selectedSetId" in value
+  && "startedAt" in value;
+
+const isDeclarationSubmission = (value: unknown): value is DeclarationSubmission =>
+  typeof value === "object"
+  && value !== null
+  && "declarerId" in value
+  && "assignments" in value
+  && "submittedAt" in value;
+
+const isTimeoutAction = (value: unknown): value is DeclarationTimeoutAction =>
+  typeof value === "object" && value !== null && "resolvedAt" in value;
+
 const withDeclarationState = (
   state: NormalPlayGameState,
   input: Readonly<{
@@ -177,6 +196,9 @@ export const startDeclaration = (
   state: NormalPlayGameState,
   action: StartDeclarationAction,
 ): DeclarationStartResolution => {
+  if (!isStartDeclarationAction(action)) {
+    return { state, result: { kind: "INVALID_START", reason: "INVALID_DECLARATION_ACTION" } };
+  }
   if (state.activeDeclaration !== null) {
     return { state, result: { kind: "INVALID_START", reason: "DECLARATION_ALREADY_ACTIVE" } };
   }
@@ -209,6 +231,12 @@ export const startDeclaration = (
   }
 
   const deadline = action.startedAt + DECLARATION_TIME_LIMIT_SECONDS;
+  if (
+    !Number.isFinite(deadline)
+    || deadline - action.startedAt !== DECLARATION_TIME_LIMIT_SECONDS
+  ) {
+    return { state, result: { kind: "INVALID_START", reason: "INVALID_STARTED_AT" } };
+  }
   const activeDeclaration: ActiveDeclaration = Object.freeze({
     declarerId: action.declarerId,
     declarerTeamId: declarer.teamId,
@@ -251,6 +279,9 @@ export const validateDeclarationSubmission = (
   state: NormalPlayGameState,
   submission: DeclarationSubmission,
 ): DeclarationSubmissionValidationResult => {
+  if (!isDeclarationSubmission(submission)) {
+    return { status: "INVALID", reason: "INVALID_SUBMISSION" };
+  }
   const activeDeclaration = state.activeDeclaration;
   if (activeDeclaration === null) return { status: "INVALID", reason: "NO_ACTIVE_DECLARATION" };
   if (!isFiniteTimestamp(submission.submittedAt)) {
@@ -373,7 +404,7 @@ export const resolveDeclarationTimeout = (
   if (activeDeclaration === null) {
     return { state, result: { kind: "INVALID_TIMEOUT", reason: "NO_ACTIVE_DECLARATION" } };
   }
-  if (!isFiniteTimestamp(action.resolvedAt)) {
+  if (!isTimeoutAction(action) || !isFiniteTimestamp(action.resolvedAt)) {
     return { state, result: { kind: "INVALID_TIMEOUT", reason: "INVALID_TIMEOUT_TIMESTAMP" } };
   }
   if (action.resolvedAt <= activeDeclaration.deadline) {

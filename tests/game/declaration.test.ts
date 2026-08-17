@@ -37,7 +37,6 @@ type StateOptions = Readonly<{
   currentTurnOwner?: PlayerId;
   hands?: Partial<Record<keyof typeof ids, readonly CardId[]>>;
   resolvedSetIds?: readonly SetId[];
-  normalAskingAllowed?: boolean;
 }>;
 
 /** Creates a complete authoritative state while allowing deterministic hands. */
@@ -45,7 +44,6 @@ const createState = ({
   currentTurnOwner = ids.four,
   hands = {},
   resolvedSetIds = [],
-  normalAskingAllowed = true,
 }: StateOptions = {}): NormalPlayGameState => {
   const initialState = initializeNormalPlayGame({ players, initialTurnOwner: currentTurnOwner }, () => 0);
   const activeCards = CANONICAL_DECK
@@ -53,11 +51,11 @@ const createState = ({
     .filter((cardId) => !resolvedSetIds.includes(getSetForCard(cardId)));
   const explicitHandKeys = Object.keys(hands) as (keyof typeof ids)[];
   const assignedCards = explicitHandKeys.flatMap((key) => hands[key] ?? []);
-  const fallbackKey = (Object.keys(ids) as (keyof typeof ids)[]).find(
+  const fallbackKeys = (Object.keys(ids) as (keyof typeof ids)[]).filter(
     (key) => !explicitHandKeys.includes(key),
   );
 
-  if (!fallbackKey) throw new Error("The test state requires one player to receive remaining cards.");
+  if (fallbackKeys.length === 0) throw new Error("The test state requires a player to receive remaining cards.");
   if (new Set(assignedCards).size !== assignedCards.length) throw new Error("Test cards must be unique.");
 
   const remainingCards = activeCards.filter((cardId) => !assignedCards.includes(cardId));
@@ -66,12 +64,13 @@ const createState = ({
       const key = (Object.keys(ids) as (keyof typeof ids)[]).find((candidate) => ids[candidate] === player.id)!;
       return {
         ...player,
-        hand: hands[key] ?? (key === fallbackKey ? remainingCards : []),
+        hand: hands[key] ?? remainingCards.filter(
+          (_, index) => fallbackKeys[index % fallbackKeys.length] === key,
+        ),
       };
     }),
     currentTurnOwner,
     resolvedSetIds,
-    normalAskingAllowed,
     scores: { TEAM_A: resolvedSetIds.length, TEAM_B: 0 },
   });
 };
@@ -161,7 +160,7 @@ describe("starting a normal declaration", () => {
     expect(JSON.stringify(resolution.result)).not.toContain("2H");
   });
 
-  it("rejects unknown declarers, invalid or resolved sets, unavailable normal play, and simultaneous declarations", () => {
+  it("rejects unknown declarers, invalid or resolved sets, and simultaneous declarations", () => {
     const state = declarationReadyState();
 
     expect(startDeclaration(state, {
@@ -173,10 +172,6 @@ describe("starting a normal declaration", () => {
     expect(startDeclaration(createState({ resolvedSetIds: ["LOW_HEARTS"] }), {
       declarerId: ids.one, selectedSetId: "LOW_HEARTS", startedAt: 1,
     }).result).toEqual({ kind: "INVALID_START", reason: "SET_ALREADY_RESOLVED" });
-    expect(startDeclaration(createState({ normalAskingAllowed: false }), {
-      declarerId: ids.one, selectedSetId: "LOW_HEARTS", startedAt: 1,
-    }).result).toEqual({ kind: "INVALID_START", reason: "NORMAL_PLAY_NOT_AVAILABLE" });
-
     const activeState = startLowHearts(state).state;
     expect(startDeclaration(activeState, {
       declarerId: ids.one, selectedSetId: "LOW_DIAMONDS", startedAt: 2,

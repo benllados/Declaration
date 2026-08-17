@@ -46,6 +46,12 @@ export const selectBlindDeclarer = (
     };
   }
 
+  if (action === null || (typeof action !== "string" && typeof action !== "object")) {
+    return {
+      state,
+      result: { kind: "INVALID_BLIND_DECLARER_SELECTION", reason: "INVALID_BLIND_DECLARER" },
+    };
+  }
   const blindDeclarerId = typeof action === "string"
     ? action
     : "blindDeclarerId" in action ? action.blindDeclarerId : action.playerId;

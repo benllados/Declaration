@@ -1,7 +1,12 @@
 import { CARDS_BY_ID, type CardId } from "../cards";
 import { getSetForCard } from "../sets";
 import type { Player, PlayerId } from "../types/player";
-import { createNormalPlayState, type NormalPlayGameState } from "./normal-play";
+import {
+  createNormalPlayState,
+  getOpposingTeamId,
+  getTeamWithZeroActiveCards,
+  type NormalPlayGameState,
+} from "./normal-play";
 
 /** The client expresses this intent; it cannot determine any outcome. */
 export type AskAction = Readonly<{
@@ -23,6 +28,7 @@ export const ASK_ILLEGAL_REASONS = [
 export type AskIllegalReason = (typeof ASK_ILLEGAL_REASONS)[number];
 
 export const INVALID_ASK_REASONS = [
+  "INVALID_ASK_ACTION",
   "INVALID_ASKER",
   "INVALID_TARGET",
   "INVALID_REQUESTED_CARD",
@@ -68,6 +74,13 @@ export type AskResolution = Readonly<{
 const isCanonicalCardId = (cardId: unknown): cardId is CardId =>
   typeof cardId === "string" && Object.prototype.hasOwnProperty.call(CARDS_BY_ID, cardId);
 
+const isAskAction = (value: unknown): value is AskAction =>
+  typeof value === "object"
+  && value !== null
+  && "asker" in value
+  && "target" in value
+  && "requestedCard" in value;
+
 const getPlayer = (state: NormalPlayGameState, playerId: PlayerId): Player | undefined =>
   state.players.find((player) => player.id === playerId);
 
@@ -76,6 +89,8 @@ export const validateAsk = (
   state: NormalPlayGameState,
   action: AskAction,
 ): AskValidationResult => {
+  if (!isAskAction(action)) return { status: "INVALID", reason: "INVALID_ASK_ACTION" };
+
   const asker = getPlayer(state, action.asker);
   if (!asker) return { status: "INVALID", reason: "INVALID_ASKER" };
 
@@ -138,8 +153,8 @@ const transferRequestedCard = (
   targetId: PlayerId,
   requestedCard: CardId,
 ): NormalPlayGameState =>
-  createNormalPlayState({
-    players: state.players.map((player) => {
+  {
+    const players = state.players.map((player) => {
       if (player.id === targetId) {
         return { ...player, hand: player.hand.filter((cardId) => cardId !== requestedCard) };
       }
@@ -147,17 +162,24 @@ const transferRequestedCard = (
         return { ...player, hand: [...player.hand, requestedCard] };
       }
       return player;
-    }),
-    currentTurnOwner: askerId,
-    resolvedSetIds: state.resolvedSetIds,
-    phase: state.phase,
-    normalAskingAllowed: state.normalAskingAllowed,
-    scores: state.scores,
-    activeDeclaration: state.activeDeclaration,
-    blindDeclarationTeamId: state.blindDeclarationTeamId,
-    blindDeclarerId: state.blindDeclarerId,
-    winnerTeamId: state.winnerTeamId,
-  });
+    });
+    const zeroCardTeamId = getTeamWithZeroActiveCards(players);
+    const entersBlindDeclaration = state.phase === "PLAYING" && zeroCardTeamId !== null;
+
+    return createNormalPlayState({
+      players,
+      currentTurnOwner: askerId,
+      resolvedSetIds: state.resolvedSetIds,
+      phase: entersBlindDeclaration ? "BLIND_DECLARATION" : state.phase,
+      scores: state.scores,
+      activeDeclaration: state.activeDeclaration,
+      blindDeclarationTeamId: entersBlindDeclaration
+        ? getOpposingTeamId(zeroCardTeamId)
+        : state.blindDeclarationTeamId,
+      blindDeclarerId: entersBlindDeclaration ? null : state.blindDeclarerId,
+      winnerTeamId: state.winnerTeamId,
+    });
+  };
 
 /**
  * Resolves a single normal-play ask. Invalid action shapes leave state unchanged;
