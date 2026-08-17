@@ -1,12 +1,17 @@
 import { GameDomainError } from "../errors";
 import { createTeams, validateTeamComposition } from "../teams";
+import type { TeamScores } from "../types/declaration";
 import type { Player, PlayerId, PlayerSetup } from "../types/player";
 import type { Team } from "../types/team";
 import { dealInitialHands, shuffleCanonicalDeck, type Random } from "./deal";
 import { createNormalPlayState, type NormalPlayGameState } from "./normal-play";
 
 export type GameSetupInput = Readonly<{ players: readonly PlayerSetup[] }>;
-export type InitialGameState = Readonly<{ players: readonly Player[]; teams: readonly Team[] }>;
+export type InitialGameState = Readonly<{
+  players: readonly Player[];
+  teams: readonly Team[];
+  scores: TeamScores;
+}>;
 export type NormalPlaySetupInput = GameSetupInput & Readonly<{ initialTurnOwner: PlayerId }>;
 
 export const validateGameSetup = (input: GameSetupInput): void => {
@@ -20,6 +25,7 @@ export const initializeGame = (input: GameSetupInput, random: Random = Math.rand
   return Object.freeze({
     players: Object.freeze(input.players.map((player) => Object.freeze({ ...player, hand: hands.get(player.id)! }))),
     teams: createTeams(input.players),
+    scores: Object.freeze({ TEAM_A: 0, TEAM_B: 0 }),
   });
 };
 
@@ -32,5 +38,6 @@ export const initializeNormalPlayGame = (
   return createNormalPlayState({
     players: initialGame.players,
     currentTurnOwner: input.initialTurnOwner,
+    scores: initialGame.scores,
   });
 };

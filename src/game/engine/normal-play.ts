@@ -1,13 +1,14 @@
 import { CANONICAL_DECK, type CardId } from "../cards";
+import { DECLARATION_TIME_LIMIT_SECONDS } from "../constants/game";
 import { GameDomainError } from "../errors";
-import { getSetForCard, SET_IDS, type SetId } from "../sets";
+import { getCardsInSet, getSetForCard, SET_IDS, type SetId } from "../sets";
 import { createTeams, validateTeamComposition } from "../teams";
+import type { ActiveDeclaration, TeamScores } from "../types/declaration";
 import type { Player, PlayerId, PlayerSetup } from "../types/player";
-import type { Team } from "../types/team";
+import { TEAM_IDS, type Team } from "../types/team";
 
 /**
- * Authoritative state required for normal asking. Resolved sets are represented
- * only so their cards can no longer be requested; set resolution is out of scope.
+ * Authoritative state for normal play and its possible declaration interruption.
  */
 export type NormalPlayGameState = Readonly<{
   players: readonly Player[];
@@ -15,6 +16,8 @@ export type NormalPlayGameState = Readonly<{
   currentTurnOwner: PlayerId;
   resolvedSetIds: readonly SetId[];
   normalAskingAllowed: boolean;
+  scores: TeamScores;
+  activeDeclaration: ActiveDeclaration | null;
 }>;
 
 export type NormalPlayStateInput = Readonly<{
@@ -22,6 +25,8 @@ export type NormalPlayStateInput = Readonly<{
   currentTurnOwner: PlayerId;
   resolvedSetIds?: readonly SetId[];
   normalAskingAllowed?: boolean;
+  scores?: TeamScores;
+  activeDeclaration?: ActiveDeclaration | null;
 }>;
 
 const isSetId = (value: unknown): value is SetId =>
@@ -29,6 +34,61 @@ const isSetId = (value: unknown): value is SetId =>
 
 const copyPlayer = (player: Player): Player =>
   Object.freeze({ ...player, hand: Object.freeze([...player.hand]) });
+
+const copyActiveDeclaration = (activeDeclaration: ActiveDeclaration): ActiveDeclaration =>
+  Object.freeze({
+    ...activeDeclaration,
+    ownershipSnapshot: Object.freeze(activeDeclaration.ownershipSnapshot.map((ownership) => Object.freeze({ ...ownership }))),
+  });
+
+const validateScores = (scores: TeamScores, resolvedSetCount: number): void => {
+  for (const teamId of TEAM_IDS) {
+    const score = scores[teamId];
+    if (!Number.isSafeInteger(score) || score < 0) {
+      throw new GameDomainError("Normal-play scores must be non-negative safe integers for both teams.");
+    }
+  }
+  if (scores.TEAM_A + scores.TEAM_B !== resolvedSetCount) {
+    throw new GameDomainError("Normal-play scores must award exactly one point for every resolved set.");
+  }
+};
+
+const validateActiveDeclaration = (
+  activeDeclaration: ActiveDeclaration,
+  players: readonly Player[],
+  resolvedSetIds: readonly SetId[],
+): void => {
+  const declarer = players.find((player) => player.id === activeDeclaration.declarerId);
+  if (!declarer) throw new GameDomainError("Active declaration declarer must be a player in the game.");
+  if (declarer.teamId !== activeDeclaration.declarerTeamId) {
+    throw new GameDomainError("Active declaration declarer team must match the declarer's team.");
+  }
+  if (!players.some((player) => player.id === activeDeclaration.interruptedTurnOwner)) {
+    throw new GameDomainError("Active declaration interrupted turn owner must be a player in the game.");
+  }
+  if (!isSetId(activeDeclaration.selectedSetId) || resolvedSetIds.includes(activeDeclaration.selectedSetId)) {
+    throw new GameDomainError("Active declaration must select an unresolved known set.");
+  }
+  if (
+    !Number.isFinite(activeDeclaration.startedAt)
+    || !Number.isFinite(activeDeclaration.deadline)
+    || activeDeclaration.deadline !== activeDeclaration.startedAt + DECLARATION_TIME_LIMIT_SECONDS
+  ) {
+    throw new GameDomainError("Active declaration must use an exact authoritative 90-second deadline.");
+  }
+
+  const expectedCards = getCardsInSet(activeDeclaration.selectedSetId);
+  const snapshot = activeDeclaration.ownershipSnapshot;
+  const playerIds = new Set(players.map((player) => player.id));
+  if (
+    !Array.isArray(snapshot)
+    || snapshot.length !== expectedCards.length
+    || new Set(snapshot.map((ownership) => ownership.cardId)).size !== snapshot.length
+    || !snapshot.every((ownership) => expectedCards.includes(ownership.cardId) && playerIds.has(ownership.ownerId))
+  ) {
+    throw new GameDomainError("Active declaration ownership snapshot must cover its selected set exactly once.");
+  }
+};
 
 /**
  * Validates and freezes a normal-play state. Every unresolved canonical card
@@ -64,6 +124,18 @@ export const createNormalPlayState = (input: NormalPlayStateInput): NormalPlayGa
     throw new GameDomainError("Normal-play asking availability must be a boolean.");
   }
 
+  const scores = input.scores ?? { TEAM_A: 0, TEAM_B: 0 };
+  validateScores(scores, resolvedSetIds.length);
+
+  const activeDeclaration = input.activeDeclaration ?? null;
+  if (activeDeclaration !== null) {
+    validateActiveDeclaration(activeDeclaration, input.players, resolvedSetIds);
+  }
+  const normalAskingAllowed = input.normalAskingAllowed ?? activeDeclaration === null;
+  if (activeDeclaration !== null && normalAskingAllowed) {
+    throw new GameDomainError("Normal asking must be unavailable while a declaration is active.");
+  }
+
   const activeCards = input.players.flatMap((player) => player.hand);
   const expectedActiveCards = CANONICAL_DECK
     .map((card) => card.id)
@@ -84,6 +156,8 @@ export const createNormalPlayState = (input: NormalPlayStateInput): NormalPlayGa
     teams: createTeams(playerSetups),
     currentTurnOwner: input.currentTurnOwner,
     resolvedSetIds: Object.freeze([...resolvedSetIds]),
-    normalAskingAllowed: input.normalAskingAllowed ?? true,
+    normalAskingAllowed,
+    scores: Object.freeze({ TEAM_A: scores.TEAM_A, TEAM_B: scores.TEAM_B }),
+    activeDeclaration: activeDeclaration === null ? null : copyActiveDeclaration(activeDeclaration),
   });
 };

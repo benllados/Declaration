@@ -124,6 +124,8 @@ const withTurnOwner = (
     currentTurnOwner,
     resolvedSetIds: state.resolvedSetIds,
     normalAskingAllowed: state.normalAskingAllowed,
+    scores: state.scores,
+    activeDeclaration: state.activeDeclaration,
   });
 
 const transferRequestedCard = (
@@ -145,11 +147,14 @@ const transferRequestedCard = (
     currentTurnOwner: askerId,
     resolvedSetIds: state.resolvedSetIds,
     normalAskingAllowed: state.normalAskingAllowed,
+    scores: state.scores,
+    activeDeclaration: state.activeDeclaration,
   });
 
 /**
  * Resolves a single normal-play ask. Invalid action shapes leave state unchanged;
- * rule-illegal asks give the turn to their real target as RULES.md requires.
+ * rule-illegal asks give the turn to their real target, except an active
+ * declaration freezes the interrupted turn completely.
  */
 export const resolveAsk = (
   state: NormalPlayGameState,
@@ -162,15 +167,18 @@ export const resolveAsk = (
   }
 
   if (validation.status === "ILLEGAL") {
+    const isBlockedByActiveDeclaration = validation.reason === "NORMAL_ASKING_NOT_ALLOWED"
+      && state.activeDeclaration !== null;
+    const resultingTurnOwner = isBlockedByActiveDeclaration ? state.currentTurnOwner : action.target;
     return {
-      state: withTurnOwner(state, action.target),
+      state: isBlockedByActiveDeclaration ? state : withTurnOwner(state, action.target),
       result: {
         kind: "ILLEGAL",
         asker: action.asker,
         target: action.target,
         requestedCard: action.requestedCard,
         reason: validation.reason,
-        resultingTurnOwner: action.target,
+        resultingTurnOwner,
       },
     };
   }

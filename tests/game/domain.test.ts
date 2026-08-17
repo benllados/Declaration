@@ -134,6 +134,7 @@ describe("initial game setup and dealing", () => {
       [players[0].id, players[1].id, players[2].id],
       [players[3].id, players[4].id, players[5].id],
     ]);
+    expect(game.scores).toEqual({ TEAM_A: 0, TEAM_B: 0 });
     expect(game.players.every((player) => player.hand.length === 9)).toBe(true);
     expect(dealtCards).toHaveLength(54);
     expect(new Set(dealtCards)).toEqual(new Set(CANONICAL_DECK.map((card) => card.id)));

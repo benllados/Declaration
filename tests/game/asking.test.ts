@@ -73,6 +73,7 @@ const createState = ({
     currentTurnOwner,
     resolvedSetIds,
     normalAskingAllowed,
+    scores: { TEAM_A: resolvedSetIds.length, TEAM_B: 0 },
   });
 };
 
@@ -100,6 +101,7 @@ describe("normal-play setup", () => {
     expect(game.currentTurnOwner).toBe(ids.four);
     expect(game.resolvedSetIds).toEqual([]);
     expect(game.normalAskingAllowed).toBe(true);
+    expect(game.scores).toEqual({ TEAM_A: 0, TEAM_B: 0 });
 
     expect(() => initializeNormalPlayGame({
       players,

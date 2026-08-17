@@ -83,12 +83,12 @@ The authoritative game engine or server validates every Ask. When an illegal Ask
 
 ## 6. Declaration
 
-Any Player may call **Declaration** at any moment during normal play, including by interrupting another Player's Turn. Once the server accepts a Declaration request:
+Any Player may call **Declaration** at any moment during normal play, including by interrupting another Player's Turn. Browsing or opening an interface to choose a Set does not start an authoritative Declaration. The Player first selects an unresolved Set and the Declaration becomes official only when the server accepts the Player's confirmed selected Set. Once the server accepts that Declaration request:
 
 1. Normal gameplay immediately freezes.
 2. No Asks may resolve while the Declaration is active.
 3. A server-authoritative 90-second Declaration timer begins.
-4. The Declarer selects one unresolved Set.
+4. The selected unresolved Set is locked and cannot be changed.
 5. The Declarer assigns all six cards in that Set to Players on their own Team.
 6. Every card must be assigned to exactly one member of the Declarer's three-Player Team.
 7. Teammates may not communicate, advise, confirm, correct, or otherwise assist the Declarer.
@@ -100,7 +100,7 @@ A Declaration is evaluated as one complete submission. It is correct only when a
 
 If all six assignments are correct, the Declarer's Team receives one point. If any assignment is incorrect, the opposing Team receives one point. A Declaration is never partially correct: one incorrect assignment causes the complete Declaration to fail.
 
-The Declaration timer lasts exactly 90 seconds and must ultimately use authoritative server time rather than a client countdown. For v1.0, a Declarer who does not submit a complete Declaration before the deadline makes an incorrect Declaration, and the opposing Team receives the point for that Set.
+The Declaration timer lasts exactly 90 seconds and must ultimately use authoritative server time rather than a client countdown. A complete submission at the exact deadline is timely; one after the deadline is timed out. For v1.0, a Declarer who does not submit a complete Declaration before the deadline makes an incorrect Declaration, and the opposing Team receives the point for the already locked Set.
 
 ### Resolving a Set
 
