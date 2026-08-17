@@ -1,0 +1,326 @@
+[
+  {
+    "id": "2-hearts",
+    "rank": "2",
+    "suit": "hearts",
+    "asset": "/cards/2-hearts.webp"
+  },
+  {
+    "id": "2-diamonds",
+    "rank": "2",
+    "suit": "diamonds",
+    "asset": "/cards/2-diamonds.webp"
+  },
+  {
+    "id": "2-clubs",
+    "rank": "2",
+    "suit": "clubs",
+    "asset": "/cards/2-clubs.webp"
+  },
+  {
+    "id": "2-spades",
+    "rank": "2",
+    "suit": "spades",
+    "asset": "/cards/2-spades.webp"
+  },
+  {
+    "id": "3-hearts",
+    "rank": "3",
+    "suit": "hearts",
+    "asset": "/cards/3-hearts.webp"
+  },
+  {
+    "id": "3-diamonds",
+    "rank": "3",
+    "suit": "diamonds",
+    "asset": "/cards/3-diamonds.webp"
+  },
+  {
+    "id": "3-clubs",
+    "rank": "3",
+    "suit": "clubs",
+    "asset": "/cards/3-clubs.webp"
+  },
+  {
+    "id": "3-spades",
+    "rank": "3",
+    "suit": "spades",
+    "asset": "/cards/3-spades.webp"
+  },
+  {
+    "id": "4-hearts",
+    "rank": "4",
+    "suit": "hearts",
+    "asset": "/cards/4-hearts.webp"
+  },
+  {
+    "id": "4-diamonds",
+    "rank": "4",
+    "suit": "diamonds",
+    "asset": "/cards/4-diamonds.webp"
+  },
+  {
+    "id": "4-clubs",
+    "rank": "4",
+    "suit": "clubs",
+    "asset": "/cards/4-clubs.webp"
+  },
+  {
+    "id": "4-spades",
+    "rank": "4",
+    "suit": "spades",
+    "asset": "/cards/4-spades.webp"
+  },
+  {
+    "id": "5-hearts",
+    "rank": "5",
+    "suit": "hearts",
+    "asset": "/cards/5-hearts.webp"
+  },
+  {
+    "id": "5-diamonds",
+    "rank": "5",
+    "suit": "diamonds",
+    "asset": "/cards/5-diamonds.webp"
+  },
+  {
+    "id": "5-clubs",
+    "rank": "5",
+    "suit": "clubs",
+    "asset": "/cards/5-clubs.webp"
+  },
+  {
+    "id": "5-spades",
+    "rank": "5",
+    "suit": "spades",
+    "asset": "/cards/5-spades.webp"
+  },
+  {
+    "id": "6-hearts",
+    "rank": "6",
+    "suit": "hearts",
+    "asset": "/cards/6-hearts.webp"
+  },
+  {
+    "id": "6-diamonds",
+    "rank": "6",
+    "suit": "diamonds",
+    "asset": "/cards/6-diamonds.webp"
+  },
+  {
+    "id": "6-clubs",
+    "rank": "6",
+    "suit": "clubs",
+    "asset": "/cards/6-clubs.webp"
+  },
+  {
+    "id": "6-spades",
+    "rank": "6",
+    "suit": "spades",
+    "asset": "/cards/6-spades.webp"
+  },
+  {
+    "id": "7-hearts",
+    "rank": "7",
+    "suit": "hearts",
+    "asset": "/cards/7-hearts.webp"
+  },
+  {
+    "id": "7-diamonds",
+    "rank": "7",
+    "suit": "diamonds",
+    "asset": "/cards/7-diamonds.webp"
+  },
+  {
+    "id": "7-clubs",
+    "rank": "7",
+    "suit": "clubs",
+    "asset": "/cards/7-clubs.webp"
+  },
+  {
+    "id": "7-spades",
+    "rank": "7",
+    "suit": "spades",
+    "asset": "/cards/7-spades.webp"
+  },
+  {
+    "id": "8-hearts",
+    "rank": "8",
+    "suit": "hearts",
+    "asset": "/cards/8-hearts.webp"
+  },
+  {
+    "id": "8-diamonds",
+    "rank": "8",
+    "suit": "diamonds",
+    "asset": "/cards/8-diamonds.webp"
+  },
+  {
+    "id": "8-clubs",
+    "rank": "8",
+    "suit": "clubs",
+    "asset": "/cards/8-clubs.webp"
+  },
+  {
+    "id": "8-spades",
+    "rank": "8",
+    "suit": "spades",
+    "asset": "/cards/8-spades.webp"
+  },
+  {
+    "id": "9-hearts",
+    "rank": "9",
+    "suit": "hearts",
+    "asset": "/cards/9-hearts.webp"
+  },
+  {
+    "id": "9-diamonds",
+    "rank": "9",
+    "suit": "diamonds",
+    "asset": "/cards/9-diamonds.webp"
+  },
+  {
+    "id": "9-clubs",
+    "rank": "9",
+    "suit": "clubs",
+    "asset": "/cards/9-clubs.webp"
+  },
+  {
+    "id": "9-spades",
+    "rank": "9",
+    "suit": "spades",
+    "asset": "/cards/9-spades.webp"
+  },
+  {
+    "id": "10-hearts",
+    "rank": "10",
+    "suit": "hearts",
+    "asset": "/cards/10-hearts.webp"
+  },
+  {
+    "id": "10-diamonds",
+    "rank": "10",
+    "suit": "diamonds",
+    "asset": "/cards/10-diamonds.webp"
+  },
+  {
+    "id": "10-clubs",
+    "rank": "10",
+    "suit": "clubs",
+    "asset": "/cards/10-clubs.webp"
+  },
+  {
+    "id": "10-spades",
+    "rank": "10",
+    "suit": "spades",
+    "asset": "/cards/10-spades.webp"
+  },
+  {
+    "id": "jack-hearts",
+    "rank": "jack",
+    "suit": "hearts",
+    "asset": "/cards/jack-hearts.webp"
+  },
+  {
+    "id": "jack-diamonds",
+    "rank": "jack",
+    "suit": "diamonds",
+    "asset": "/cards/jack-diamonds.webp"
+  },
+  {
+    "id": "jack-clubs",
+    "rank": "jack",
+    "suit": "clubs",
+    "asset": "/cards/jack-clubs.webp"
+  },
+  {
+    "id": "jack-spades",
+    "rank": "jack",
+    "suit": "spades",
+    "asset": "/cards/jack-spades.webp"
+  },
+  {
+    "id": "queen-hearts",
+    "rank": "queen",
+    "suit": "hearts",
+    "asset": "/cards/queen-hearts.webp"
+  },
+  {
+    "id": "queen-diamonds",
+    "rank": "queen",
+    "suit": "diamonds",
+    "asset": "/cards/queen-diamonds.webp"
+  },
+  {
+    "id": "queen-clubs",
+    "rank": "queen",
+    "suit": "clubs",
+    "asset": "/cards/queen-clubs.webp"
+  },
+  {
+    "id": "queen-spades",
+    "rank": "queen",
+    "suit": "spades",
+    "asset": "/cards/queen-spades.webp"
+  },
+  {
+    "id": "king-hearts",
+    "rank": "king",
+    "suit": "hearts",
+    "asset": "/cards/king-hearts.webp"
+  },
+  {
+    "id": "king-diamonds",
+    "rank": "king",
+    "suit": "diamonds",
+    "asset": "/cards/king-diamonds.webp"
+  },
+  {
+    "id": "king-clubs",
+    "rank": "king",
+    "suit": "clubs",
+    "asset": "/cards/king-clubs.webp"
+  },
+  {
+    "id": "king-spades",
+    "rank": "king",
+    "suit": "spades",
+    "asset": "/cards/king-spades.webp"
+  },
+  {
+    "id": "ace-hearts",
+    "rank": "ace",
+    "suit": "hearts",
+    "asset": "/cards/ace-hearts.webp"
+  },
+  {
+    "id": "ace-diamonds",
+    "rank": "ace",
+    "suit": "diamonds",
+    "asset": "/cards/ace-diamonds.webp"
+  },
+  {
+    "id": "ace-clubs",
+    "rank": "ace",
+    "suit": "clubs",
+    "asset": "/cards/ace-clubs.webp"
+  },
+  {
+    "id": "ace-spades",
+    "rank": "ace",
+    "suit": "spades",
+    "asset": "/cards/ace-spades.webp"
+  },
+  {
+    "id": "joker-black",
+    "rank": "joker",
+    "suit": null,
+    "asset": "/cards/joker-black.webp"
+  },
+  {
+    "id": "joker-red",
+    "rank": "joker",
+    "suit": null,
+    "asset": "/cards/joker-red.webp"
+  }
+]

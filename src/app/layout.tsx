@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Declaration",
-  description: "Declaration is under development.",
+  title: "Declaration — Build 09",
+  description: "Declaration production design-system component showcase.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
