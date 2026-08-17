@@ -1,7 +1,9 @@
 import type { CardId } from "@/game/cards";
 import type { NormalPlayGameState } from "@/game/engine/normal-play";
-import { getCardsInSet, type SetId } from "@/game/sets";
+import { getCardsInSet, SET_IDS, type SetId } from "@/game/sets";
+import type { DeclarationMode } from "@/game/types/declaration";
 import type { PlayerId } from "@/game/types/player";
+import type { TeamId } from "@/game/types/team";
 
 export type PlayerRelationship = "team" | "opponent";
 
@@ -13,12 +15,22 @@ export type VisiblePlayer = Readonly<{
   isCurrentTurn: boolean;
 }>;
 
+/** Public lock details only; the authoritative ownership snapshot never crosses this boundary. */
+export type PublicActiveDeclaration = Readonly<{
+  declarerId: PlayerId;
+  declarerTeamId: TeamId;
+  mode: DeclarationMode;
+  selectedSetId: SetId;
+  startedAt: number;
+  deadline: number;
+}>;
+
 /**
  * The only state shape presentation components receive. It intentionally has
  * no teammate or opponent hand data, ownership map, or declaration snapshot.
  */
 export type PlayerGameView = Readonly<{
-  localPlayer: Readonly<{ id: PlayerId; displayName: string }>;
+  localPlayer: Readonly<{ id: PlayerId; displayName: string; teamId: TeamId }>;
   visibleHand: readonly CardId[];
   visiblePlayers: readonly VisiblePlayer[];
   currentTurnOwner: Readonly<{ id: PlayerId; displayName: string; isLocal: boolean }>;
@@ -27,6 +39,11 @@ export type PlayerGameView = Readonly<{
   teamScore: number;
   opponentScore: number;
   resolvedSetIds: readonly SetId[];
+  unresolvedSetIds: readonly SetId[];
+  activeDeclaration: PublicActiveDeclaration | null;
+  blindDeclarationTeamId: TeamId | null;
+  blindDeclarerId: PlayerId | null;
+  winnerTeamId: TeamId | null;
   winnerLabel: string | null;
 }>;
 
@@ -83,9 +100,23 @@ export const createPlayerGameView = (
   const winnerLabel = state.winnerTeamId === null
     ? null
     : state.winnerTeamId === localPlayer.teamId ? "Your team wins" : "Their team wins";
+  const activeDeclaration = state.activeDeclaration === null
+    ? null
+    : Object.freeze({
+      declarerId: state.activeDeclaration.declarerId,
+      declarerTeamId: state.activeDeclaration.declarerTeamId,
+      mode: state.activeDeclaration.mode,
+      selectedSetId: state.activeDeclaration.selectedSetId,
+      startedAt: state.activeDeclaration.startedAt,
+      deadline: state.activeDeclaration.deadline,
+    });
 
   return Object.freeze({
-    localPlayer: Object.freeze({ id: localPlayer.id, displayName: localPlayer.displayName }),
+    localPlayer: Object.freeze({
+      id: localPlayer.id,
+      displayName: localPlayer.displayName,
+      teamId: localPlayer.teamId,
+    }),
     visibleHand: Object.freeze([...localPlayer.hand]),
     visiblePlayers: Object.freeze(visiblePlayers),
     currentTurnOwner: Object.freeze({
@@ -98,6 +129,11 @@ export const createPlayerGameView = (
     teamScore: state.scores[localPlayer.teamId],
     opponentScore: state.scores[opposingTeamId],
     resolvedSetIds: Object.freeze([...state.resolvedSetIds]),
+    unresolvedSetIds: Object.freeze(SET_IDS.filter((setId) => !state.resolvedSetIds.includes(setId))),
+    activeDeclaration,
+    blindDeclarationTeamId: state.blindDeclarationTeamId,
+    blindDeclarerId: state.blindDeclarerId,
+    winnerTeamId: state.winnerTeamId,
     winnerLabel,
   });
 };

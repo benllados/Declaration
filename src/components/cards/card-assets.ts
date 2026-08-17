@@ -14,6 +14,13 @@ const SUIT_FILE_NAMES: Readonly<Record<Suit, string>> = Object.freeze({
   SPADES: "spades",
 });
 
+const KING_FILE_NAMES: Readonly<Record<Suit, string>> = Object.freeze({
+  HEARTS: "king-hearts-v2",
+  DIAMONDS: "king-diamonds-v2",
+  CLUBS: "king-clubs-v2",
+  SPADES: "king-spades-v2",
+});
+
 const RANK_NAMES: Readonly<Record<Rank, string>> = Object.freeze({
   2: "Two",
   3: "Three",
@@ -40,6 +47,8 @@ const getAssetForCard = (cardId: CardId): string => {
       ? `${TRIMMED_CARD_DIRECTORY}/joker-red.webp`
       : `${TRIMMED_CARD_DIRECTORY}/joker-black.webp`;
   }
+
+  if (card.rank === "K") return `${TRIMMED_CARD_DIRECTORY}/${KING_FILE_NAMES[card.suit]}.webp`;
 
   const rank = RANK_FILE_NAMES[card.rank] ?? card.rank;
   return `${TRIMMED_CARD_DIRECTORY}/${rank}-${SUIT_FILE_NAMES[card.suit]}.webp`;

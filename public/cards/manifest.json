@@ -267,25 +267,25 @@
     "id": "king-hearts",
     "rank": "king",
     "suit": "hearts",
-    "asset": "/cards/king-hearts.webp"
+    "asset": "/cards/king-hearts-v2.webp"
   },
   {
     "id": "king-diamonds",
     "rank": "king",
     "suit": "diamonds",
-    "asset": "/cards/king-diamonds.webp"
+    "asset": "/cards/king-diamonds-v2.webp"
   },
   {
     "id": "king-clubs",
     "rank": "king",
     "suit": "clubs",
-    "asset": "/cards/king-clubs.webp"
+    "asset": "/cards/king-clubs-v2.webp"
   },
   {
     "id": "king-spades",
     "rank": "king",
     "suit": "spades",
-    "asset": "/cards/king-spades.webp"
+    "asset": "/cards/king-spades-v2.webp"
   },
   {
     "id": "ace-hearts",
