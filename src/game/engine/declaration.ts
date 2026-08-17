@@ -1,15 +1,22 @@
 import { CARDS_BY_ID, type CardId } from "../cards";
-import { DECLARATION_TIME_LIMIT_SECONDS } from "../constants/game";
+import { DECLARATION_TIME_LIMIT_SECONDS, TOTAL_SETS } from "../constants/game";
 import { getCardOwner } from "../hands";
 import { getCardsInSet, SET_IDS, type SetId } from "../sets";
 import type {
   ActiveDeclaration,
   AuthoritativeTimestamp,
   DeclarationCardOwnership,
+  DeclarationMode,
 } from "../types/declaration";
 import type { PlayerId } from "../types/player";
 import type { TeamId } from "../types/team";
-import { createNormalPlayState, type NormalPlayGameState } from "./normal-play";
+import {
+  createNormalPlayState,
+  getOpposingTeamId,
+  getTeamWithZeroActiveCards,
+  type GamePhase,
+  type NormalPlayGameState,
+} from "./normal-play";
 
 /** An official declaration locks its set before normal play is frozen. */
 export type StartDeclarationAction = Readonly<{
@@ -37,6 +44,9 @@ export const INVALID_DECLARATION_START_REASONS = [
   "INVALID_STARTED_AT",
   "DECLARATION_ALREADY_ACTIVE",
   "NORMAL_PLAY_NOT_AVAILABLE",
+  "BLIND_DECLARER_NOT_SELECTED",
+  "NOT_BLIND_DECLARER",
+  "GAME_OVER",
 ] as const;
 export type InvalidDeclarationStartReason = (typeof INVALID_DECLARATION_START_REASONS)[number];
 
@@ -124,27 +134,30 @@ const isCanonicalCardId = (value: unknown): value is CardId =>
 const isFiniteTimestamp = (value: unknown): value is AuthoritativeTimestamp =>
   typeof value === "number" && Number.isFinite(value);
 
-const getOpposingTeamId = (state: NormalPlayGameState, teamId: TeamId): TeamId =>
-  state.teams.find((team) => team.id !== teamId)!.id;
-
 const withDeclarationState = (
   state: NormalPlayGameState,
   input: Readonly<{
     activeDeclaration: ActiveDeclaration | null;
     resolvedSetIds?: readonly SetId[];
     scores?: NormalPlayGameState["scores"];
-    normalAskingAllowed: boolean;
+    phase: GamePhase;
     currentTurnOwner?: PlayerId;
     players?: NormalPlayGameState["players"];
+    blindDeclarationTeamId?: TeamId | null;
+    blindDeclarerId?: PlayerId | null;
+    winnerTeamId?: TeamId | null;
   }>,
 ): NormalPlayGameState =>
   createNormalPlayState({
     players: input.players ?? state.players,
     currentTurnOwner: input.currentTurnOwner ?? state.currentTurnOwner,
     resolvedSetIds: input.resolvedSetIds ?? state.resolvedSetIds,
-    normalAskingAllowed: input.normalAskingAllowed,
+    phase: input.phase,
     scores: input.scores ?? state.scores,
     activeDeclaration: input.activeDeclaration,
+    blindDeclarationTeamId: input.blindDeclarationTeamId ?? state.blindDeclarationTeamId,
+    blindDeclarerId: input.blindDeclarerId ?? state.blindDeclarerId,
+    winnerTeamId: input.winnerTeamId ?? state.winnerTeamId,
   });
 
 const getOwnershipSnapshot = (
@@ -167,11 +180,24 @@ export const startDeclaration = (
   if (state.activeDeclaration !== null) {
     return { state, result: { kind: "INVALID_START", reason: "DECLARATION_ALREADY_ACTIVE" } };
   }
-  if (!state.normalAskingAllowed) {
+  if (state.phase === "GAME_OVER") {
+    return { state, result: { kind: "INVALID_START", reason: "GAME_OVER" } };
+  }
+  if (state.phase === "DECLARING") {
     return { state, result: { kind: "INVALID_START", reason: "NORMAL_PLAY_NOT_AVAILABLE" } };
   }
   const declarer = state.players.find((player) => player.id === action.declarerId);
   if (!declarer) return { state, result: { kind: "INVALID_START", reason: "INVALID_DECLARER" } };
+  let mode: DeclarationMode = "NORMAL";
+  if (state.phase === "BLIND_DECLARATION") {
+    if (state.blindDeclarerId === null) {
+      return { state, result: { kind: "INVALID_START", reason: "BLIND_DECLARER_NOT_SELECTED" } };
+    }
+    if (action.declarerId !== state.blindDeclarerId) {
+      return { state, result: { kind: "INVALID_START", reason: "NOT_BLIND_DECLARER" } };
+    }
+    mode = "BLIND";
+  }
   if (!isSetId(action.selectedSetId)) {
     return { state, result: { kind: "INVALID_START", reason: "INVALID_SELECTED_SET" } };
   }
@@ -186,6 +212,7 @@ export const startDeclaration = (
   const activeDeclaration: ActiveDeclaration = Object.freeze({
     declarerId: action.declarerId,
     declarerTeamId: declarer.teamId,
+    mode,
     selectedSetId: action.selectedSetId,
     startedAt: action.startedAt,
     deadline,
@@ -194,7 +221,7 @@ export const startDeclaration = (
   });
   const nextState = withDeclarationState(state, {
     activeDeclaration,
-    normalAskingAllowed: false,
+    phase: mode === "BLIND" ? "BLIND_DECLARATION" : "DECLARING",
   });
 
   return {
@@ -272,22 +299,35 @@ const resolveActiveDeclaration = (
   const activeDeclaration = state.activeDeclaration!;
   const scoringTeamId = outcome === "CORRECT"
     ? activeDeclaration.declarerTeamId
-    : getOpposingTeamId(state, activeDeclaration.declarerTeamId);
+    : getOpposingTeamId(activeDeclaration.declarerTeamId);
   const scores = {
     ...state.scores,
     [scoringTeamId]: state.scores[scoringTeamId] + 1,
   };
   const selectedCards = new Set(getCardsInSet(activeDeclaration.selectedSetId));
+  const players = state.players.map((player) => ({
+    ...player,
+    hand: player.hand.filter((cardId) => !selectedCards.has(cardId)),
+  }));
+  const resolvedSetIds = [...state.resolvedSetIds, activeDeclaration.selectedSetId];
+  const phase: GamePhase = resolvedSetIds.length === TOTAL_SETS
+    ? "GAME_OVER"
+    : activeDeclaration.mode === "BLIND"
+      ? "BLIND_DECLARATION"
+      : getTeamWithZeroActiveCards(players) === null ? "PLAYING" : "BLIND_DECLARATION";
+  const zeroCardTeamId = getTeamWithZeroActiveCards(players);
+  const blindDeclarationTeamId = phase === "BLIND_DECLARATION" && activeDeclaration.mode === "NORMAL"
+    ? getOpposingTeamId(zeroCardTeamId!)
+    : state.blindDeclarationTeamId;
   const nextState = withDeclarationState(state, {
-    players: state.players.map((player) => ({
-      ...player,
-      hand: player.hand.filter((cardId) => !selectedCards.has(cardId)),
-    })),
+    players,
     currentTurnOwner: activeDeclaration.interruptedTurnOwner,
-    resolvedSetIds: [...state.resolvedSetIds, activeDeclaration.selectedSetId],
+    resolvedSetIds,
     scores,
     activeDeclaration: null,
-    normalAskingAllowed: true,
+    phase,
+    blindDeclarationTeamId,
+    blindDeclarerId: state.blindDeclarerId,
   });
 
   return {

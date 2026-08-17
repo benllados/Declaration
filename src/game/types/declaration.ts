@@ -11,6 +11,10 @@ export type AuthoritativeTimestamp = number;
 
 export type TeamScores = Readonly<Record<TeamId, number>>;
 
+/** Identifies whether a frozen declaration began during normal or Blind play. */
+export const DECLARATION_MODES = ["NORMAL", "BLIND"] as const;
+export type DeclarationMode = (typeof DECLARATION_MODES)[number];
+
 /** Internal ownership captured when an official declaration starts. */
 export type DeclarationCardOwnership = Readonly<{
   cardId: CardId;
@@ -18,12 +22,13 @@ export type DeclarationCardOwnership = Readonly<{
 }>;
 
 /**
- * Authoritative state for the currently frozen normal declaration. This is
+ * Authoritative state for the currently frozen declaration. This is
  * server state, not a client-facing event payload; its snapshot is private.
  */
 export type ActiveDeclaration = Readonly<{
   declarerId: PlayerId;
   declarerTeamId: TeamId;
+  mode: DeclarationMode;
   selectedSetId: SetId;
   startedAt: AuthoritativeTimestamp;
   deadline: AuthoritativeTimestamp;

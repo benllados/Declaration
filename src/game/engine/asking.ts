@@ -85,7 +85,7 @@ export const validateAsk = (
   if (!isCanonicalCardId(action.requestedCard)) {
     return { status: "INVALID", reason: "INVALID_REQUESTED_CARD" };
   }
-  if (!state.normalAskingAllowed) {
+  if (state.phase !== "PLAYING") {
     return { status: "ILLEGAL", reason: "NORMAL_ASKING_NOT_ALLOWED" };
   }
   if (state.currentTurnOwner !== action.asker) {
@@ -123,9 +123,13 @@ const withTurnOwner = (
     players: state.players,
     currentTurnOwner,
     resolvedSetIds: state.resolvedSetIds,
+    phase: state.phase,
     normalAskingAllowed: state.normalAskingAllowed,
     scores: state.scores,
     activeDeclaration: state.activeDeclaration,
+    blindDeclarationTeamId: state.blindDeclarationTeamId,
+    blindDeclarerId: state.blindDeclarerId,
+    winnerTeamId: state.winnerTeamId,
   });
 
 const transferRequestedCard = (
@@ -146,9 +150,13 @@ const transferRequestedCard = (
     }),
     currentTurnOwner: askerId,
     resolvedSetIds: state.resolvedSetIds,
+    phase: state.phase,
     normalAskingAllowed: state.normalAskingAllowed,
     scores: state.scores,
     activeDeclaration: state.activeDeclaration,
+    blindDeclarationTeamId: state.blindDeclarationTeamId,
+    blindDeclarerId: state.blindDeclarerId,
+    winnerTeamId: state.winnerTeamId,
   });
 
 /**
@@ -167,11 +175,11 @@ export const resolveAsk = (
   }
 
   if (validation.status === "ILLEGAL") {
-    const isBlockedByActiveDeclaration = validation.reason === "NORMAL_ASKING_NOT_ALLOWED"
-      && state.activeDeclaration !== null;
-    const resultingTurnOwner = isBlockedByActiveDeclaration ? state.currentTurnOwner : action.target;
+    const isBlockedByGamePhase = validation.reason === "NORMAL_ASKING_NOT_ALLOWED"
+      && state.phase !== "PLAYING";
+    const resultingTurnOwner = isBlockedByGamePhase ? state.currentTurnOwner : action.target;
     return {
-      state: isBlockedByActiveDeclaration ? state : withTurnOwner(state, action.target),
+      state: isBlockedByGamePhase ? state : withTurnOwner(state, action.target),
       result: {
         kind: "ILLEGAL",
         asker: action.asker,
