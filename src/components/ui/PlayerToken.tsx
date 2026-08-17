@@ -12,6 +12,7 @@ type PlayerTokenProps = Readonly<{
   team?: "team" | "opponent" | "neutral";
   selected?: boolean;
   active?: boolean;
+  disabled?: boolean;
   size?: "small" | "medium" | "large";
   onClick?: () => void;
   className?: string;
@@ -33,6 +34,7 @@ export function PlayerToken({
   team = "neutral",
   selected = false,
   active = false,
+  disabled = false,
   size = "medium",
   onClick,
   className = "",
@@ -43,6 +45,7 @@ export function PlayerToken({
     `player-token--${size}`,
     selected && "player-token--selected",
     active && "player-token--active",
+    disabled && "player-token--disabled",
     className,
   ]
     .filter(Boolean)
@@ -66,8 +69,9 @@ export function PlayerToken({
       type: "button",
       className: tokenClassName,
       onClick,
+      disabled,
       "aria-pressed": selected,
-      "aria-label": `${name}, ${cardCount} cards${selected ? ", selected" : ""}${active ? ", current turn" : ""}`,
+      "aria-label": `${name}, ${cardCount} cards${selected ? ", selected" : ""}${active ? ", current turn" : ""}${disabled ? ", unavailable" : ""}`,
     };
 
     return <button {...buttonProps}>{content}</button>;
@@ -75,7 +79,7 @@ export function PlayerToken({
 
   const tokenProps: HTMLAttributes<HTMLDivElement> = {
     className: tokenClassName,
-    "aria-label": `${name}, ${cardCount} cards${selected ? ", selected" : ""}${active ? ", current turn" : ""}`,
+    "aria-label": `${name}, ${cardCount} cards${selected ? ", selected" : ""}${active ? ", current turn" : ""}${disabled ? ", unavailable" : ""}`,
   };
 
   return <div {...tokenProps}>{content}</div>;

@@ -13,6 +13,8 @@ type PlayingCardProps = Readonly<{
   selected?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  priority?: boolean;
+  decorative?: boolean;
   className?: string;
 }>;
 
@@ -22,6 +24,8 @@ export function PlayingCard({
   selected = false,
   disabled = false,
   onClick,
+  priority = false,
+  decorative = false,
   className = "",
 }: PlayingCardProps) {
   const accessibleName = getCardAccessibleName(cardId);
@@ -38,10 +42,11 @@ export function PlayingCard({
   const image = (
     <Image
       src={getCardAsset(cardId)}
-      alt={accessibleName}
+      alt={decorative ? "" : accessibleName}
       width={800}
       height={1200}
       sizes="(max-width: 42rem) 25vw, 120px"
+      priority={priority}
       draggable={false}
     />
   );
@@ -59,11 +64,13 @@ export function PlayingCard({
     return <button {...buttonProps}>{image}</button>;
   }
 
-  const cardProps: HTMLAttributes<HTMLDivElement> = {
-    className: sharedClassName,
-    role: "img",
-    "aria-label": `${accessibleName}${selected ? ", selected" : ""}${disabled ? ", unavailable" : ""}`,
-  };
+  const cardProps: HTMLAttributes<HTMLDivElement> = decorative
+    ? { className: sharedClassName, "aria-hidden": true }
+    : {
+      className: sharedClassName,
+      role: "img",
+      "aria-label": `${accessibleName}${selected ? ", selected" : ""}${disabled ? ", unavailable" : ""}`,
+    };
 
   return <div {...cardProps}>{image}</div>;
 }

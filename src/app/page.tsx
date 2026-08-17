@@ -1,5 +1,5 @@
-import { ComponentShowcase } from "@/components/showcase/ComponentShowcase";
+import { GameplayExperience } from "@/components/game/GameplayExperience";
 
 export default function Home() {
-  return <ComponentShowcase />;
+  return <GameplayExperience />;
 }

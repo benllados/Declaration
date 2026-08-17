@@ -4,7 +4,9 @@ Declaration is a mobile-first, real-time multiplayer card game designed for six 
 
 ## Status
 
-This repository provides a complete, framework-independent Declaration v1.0 rules engine: card/set modeling, normal asks, timed declarations, Blind Declaration selection and resolution, game lifecycle phases, score/card conservation, terminal game completion, and winner determination. The engine validates authoritative actions and timestamps, uses start-time ownership snapshots, and keeps hidden hand data out of action results. Game UI, multiplayer, authentication, and Supabase integration have not been implemented.
+This repository provides a complete, framework-independent Declaration v1.0 rules engine: card/set modeling, normal asks, timed declarations, Blind Declaration selection and resolution, game lifecycle phases, score/card conservation, terminal game completion, and winner determination. The engine validates authoritative actions and timestamps, uses start-time ownership snapshots, and keeps hidden hand data out of action results.
+
+Build 10 adds a local single-client production gameplay table at `/`. It starts a deterministic six-player game through the existing setup/dealing engine, renders a player-scoped view, and sends normal Ask intents through the frozen engine. This is a development integration only: multiplayer, authentication, persistence, and Supabase are not implemented. The Build 09 component reference remains available at `/dev/ui`.
 
 ## Technology
 

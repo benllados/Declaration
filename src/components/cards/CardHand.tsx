@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 
 import type { CardId } from "@/game/cards";
 
+import { getCardAccessibleName } from "./card-assets";
 import { getHandCardPositions } from "./card-layout";
 import { PlayingCard } from "./PlayingCard";
 
@@ -40,6 +41,8 @@ export function CardHand({
         <div className="card-hand__fan">
           {positions.map((position) => {
             const disabled = disabledCardIds.includes(position.cardId);
+            const isInteractive = canSelect && !disabled;
+            const isSelected = position.cardId === selectedCardId;
 
             return (
               <div
@@ -53,10 +56,20 @@ export function CardHand({
               >
                 <PlayingCard
                   cardId={position.cardId}
-                  selected={position.cardId === selectedCardId}
+                  decorative={isInteractive}
+                  selected={isSelected}
                   disabled={disabled}
-                  onClick={canSelect && !disabled ? () => onSelectedCardChange(position.cardId) : undefined}
+                  priority={position.index < 2}
                 />
+                {isInteractive ? (
+                  <button
+                    aria-label={`${getCardAccessibleName(position.cardId)}${isSelected ? ", selected" : ""}`}
+                    aria-pressed={isSelected}
+                    className="card-hand__hit-area"
+                    onClick={() => onSelectedCardChange(position.cardId)}
+                    type="button"
+                  />
+                ) : null}
               </div>
             );
           })}

@@ -18,7 +18,7 @@ export const getHandCardPositions = (
 ): readonly HandCardPosition[] => {
   const lastIndex = cardIds.length - 1;
   const center = lastIndex / 2;
-  const maximumRotation = Math.min(9, Math.max(3.5, lastIndex * 1.15));
+  const maximumRotation = Math.min(7.5, Math.max(3.25, lastIndex));
 
   return cardIds.map((cardId, index) => {
     const isSelected = cardId === selectedCardId;
