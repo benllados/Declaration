@@ -116,4 +116,24 @@ describe("public game creation route", () => {
     expect(errorLog).toHaveBeenCalledOnce();
     expect(errorLog).toHaveBeenCalledWith({ category: "rate_limit_configuration" });
   });
+
+  it.each([
+    ["28P01", "provisioning_database_authentication"],
+    ["42501", "provisioning_database_permission"],
+    ["42P01", "provisioning_database_schema"],
+    ["ECONNREFUSED", "provisioning_database_connection"],
+    ["42P99", "provisioning_failed"],
+  ] as const)("logs only the category for provisioning error code %s", async (code, category) => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    createGame.mockRejectedValue(Object.assign(new Error("database failure"), { code }));
+
+    const response = await POST(request({
+      method: "POST",
+      headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+      body: JSON.stringify({ playerNames: names }),
+    }));
+
+    expect(response.status).toBe(500);
+    expect(errorLog.mock.calls).toEqual([[{ category }]]);
+  });
 });
