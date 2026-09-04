@@ -14,7 +14,7 @@ import {
 import { seatFor } from "../support/game-session-fixtures";
 import { LOCAL_PLAYERS } from "../../src/lib/local-game";
 
-const TEST_KEY_SECRET = "a".repeat(43);
+const TEST_KEY_SECRET = "A".repeat(43);
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -86,14 +86,12 @@ describe("rate-limit boundary", () => {
 
   it("fails closed when production configuration or authoritative source identity is unavailable", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("VERCEL", "1");
     await expect(limitRequestSource(new Request("https://app.example"), SOURCE_GAME_READ_RATE_LIMIT))
       .rejects.toBeInstanceOf(RateLimitConfigurationError);
   });
 
   it("fails closed when Vercel cannot supply an authoritative client address", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("VERCEL", "1");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.example.invalid");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "not-a-real-token");
     vi.stubEnv("DECLARATION_RATE_LIMIT_KEY_SECRET", TEST_KEY_SECRET);

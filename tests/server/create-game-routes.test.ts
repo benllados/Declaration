@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+import { RateLimitConfigurationError } from "../../src/server/game-session/errors";
 import type { GameProvisioningInput, ProvisionedSeat } from "../../src/server/game-session/provisioning";
 import { configureRateLimitRuntimeForTests, InMemoryRateLimiter, type RateLimiter } from "../../src/server/security/rate-limit";
 
@@ -26,6 +27,10 @@ beforeEach(() => {
       expiresAt: new Date("2030-01-01T00:00:00.000Z"),
     })),
   }));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("public game creation route", () => {
@@ -85,6 +90,7 @@ describe("public game creation route", () => {
   });
 
   it("turns a limiter adapter failure into a generic 503 before provisioning", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const limiter: RateLimiter = { consume: vi.fn().mockRejectedValue(new Error("redis endpoint failed")) };
     configureRateLimitRuntimeForTests(limiter);
 
@@ -93,5 +99,21 @@ describe("public game creation route", () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ code: "GAME_SESSION_TEMPORARILY_UNAVAILABLE" });
     expect(createGame).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledOnce();
+    expect(errorLog).toHaveBeenCalledWith({ category: "rate_limit_unavailable" });
+  });
+
+  it("logs only the rate-limit configuration category before returning a generic 503", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const limiter: RateLimiter = { consume: vi.fn().mockRejectedValue(new RateLimitConfigurationError()) };
+    configureRateLimitRuntimeForTests(limiter);
+
+    const response = await POST(request({ method: "POST", headers: { "content-type": "application/json" }, body: "{" }));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ code: "GAME_SESSION_TEMPORARILY_UNAVAILABLE" });
+    expect(createGame).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledOnce();
+    expect(errorLog).toHaveBeenCalledWith({ category: "rate_limit_configuration" });
   });
 });

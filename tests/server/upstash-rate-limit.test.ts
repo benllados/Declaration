@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { RateLimitConfigurationError } from "../../src/server/game-session/errors";
 
 const mockedUpstash = vi.hoisted(() => ({
   counts: new Map<string, number>(),
@@ -32,13 +34,24 @@ vi.mock("@upstash/ratelimit", () => ({
   },
 }));
 
-import { createProductionRateLimiter } from "../../src/server/security/rate-limit";
+import {
+  createProductionRateLimiter,
+  limitRequestSource,
+  SOURCE_GAME_CREATION_RATE_LIMIT,
+} from "../../src/server/security/rate-limit";
 
 const configuration = {
   redisUrl: "https://redis.example.invalid",
   redisToken: "not-a-real-token",
-  keySecret: "a".repeat(43),
+  keySecret: "A".repeat(43),
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  mockedUpstash.counts.clear();
+  mockedUpstash.redisConfigurations.length = 0;
+  mockedUpstash.limiterConfigurations.length = 0;
+});
 
 describe("Upstash production rate limiter", () => {
   it("shares mocked Redis decisions across simulated instances without fail-open timeouts", async () => {
@@ -60,5 +73,50 @@ describe("Upstash production rate limiter", () => {
         timeout: 0,
       });
     }
+  });
+
+  it("fails closed on invalid production limiter configuration before creating a limiter", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL", undefined);
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "http://redis.example.invalid");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", configuration.redisToken);
+    vi.stubEnv("DECLARATION_RATE_LIMIT_KEY_SECRET", configuration.keySecret);
+
+    await expect(limitRequestSource(new Request("https://app.example"), SOURCE_GAME_CREATION_RATE_LIMIT))
+      .rejects.toBeInstanceOf(RateLimitConfigurationError);
+
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", configuration.redisUrl);
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", " ");
+    await expect(limitRequestSource(new Request("https://app.example"), SOURCE_GAME_CREATION_RATE_LIMIT))
+      .rejects.toBeInstanceOf(RateLimitConfigurationError);
+
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", configuration.redisToken);
+    vi.stubEnv("DECLARATION_RATE_LIMIT_KEY_SECRET", "a".repeat(43));
+    await expect(limitRequestSource(new Request("https://app.example"), SOURCE_GAME_CREATION_RATE_LIMIT))
+      .rejects.toBeInstanceOf(RateLimitConfigurationError);
+
+    expect(mockedUpstash.redisConfigurations).toHaveLength(0);
+    expect(mockedUpstash.limiterConfigurations).toHaveLength(0);
+  });
+
+  it("initializes production limiting without the optional Vercel system environment variable", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL", undefined);
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", configuration.redisUrl);
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", configuration.redisToken);
+    vi.stubEnv("DECLARATION_RATE_LIMIT_KEY_SECRET", configuration.keySecret);
+
+    await expect(limitRequestSource(
+      new Request("https://app.example", { headers: { "x-forwarded-for": "203.0.113.10" } }),
+      SOURCE_GAME_CREATION_RATE_LIMIT,
+    )).rejects.toBeInstanceOf(RateLimitConfigurationError);
+    expect(mockedUpstash.limiterConfigurations).toHaveLength(0);
+
+    await expect(limitRequestSource(
+      new Request("https://app.example", { headers: { "x-real-ip": "203.0.113.10" } }),
+      SOURCE_GAME_CREATION_RATE_LIMIT,
+    )).resolves.toEqual({ allowed: true, retryAfterSeconds: 0 });
+    expect(mockedUpstash.redisConfigurations).toHaveLength(1);
+    expect(mockedUpstash.limiterConfigurations).toHaveLength(1);
   });
 });

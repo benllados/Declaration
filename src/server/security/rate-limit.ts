@@ -101,7 +101,6 @@ const validateRateLimitKeySecret = (value: string): string => {
 };
 
 const loadProductionConfiguration = (): ProductionRateLimitConfiguration => {
-  if (process.env.VERCEL !== "1") throw new RateLimitConfigurationError();
   const redisUrl = requireProductionValue(process.env.UPSTASH_REDIS_REST_URL);
   const redisToken = requireProductionValue(process.env.UPSTASH_REDIS_REST_TOKEN);
   try {
