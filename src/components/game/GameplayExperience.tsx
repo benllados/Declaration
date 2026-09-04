@@ -34,9 +34,9 @@ import {
   type PublicActiveDeclaration,
 } from "@/lib/local-game";
 
-type TableFeedback = AskFeedback | DeclarationFeedback;
+export type TableFeedback = AskFeedback | DeclarationFeedback;
 
-type TeamAssignmentPlayer = Readonly<{
+export type TeamAssignmentPlayer = Readonly<{
   id: PlayerId;
   displayName: string;
   cardCount: number;
@@ -53,7 +53,7 @@ type AskWorkbenchProps = Readonly<{
   onSubmit: () => void;
 }>;
 
-function AskWorkbench({
+export function AskWorkbench({
   view,
   workbench,
   selectedRequestedCardId,
@@ -123,7 +123,7 @@ function AskWorkbench({
   );
 }
 
-function FeedbackNotice({ feedback, onDismiss }: Readonly<{ feedback: TableFeedback; onDismiss: () => void }>) {
+export function FeedbackNotice({ feedback, onDismiss }: Readonly<{ feedback: TableFeedback; onDismiss: () => void }>) {
   const cardId = "cardId" in feedback ? feedback.cardId : undefined;
 
   return (
@@ -144,7 +144,7 @@ function FeedbackNotice({ feedback, onDismiss }: Readonly<{ feedback: TableFeedb
   );
 }
 
-type SetSelectionSheetProps = Readonly<{
+export type SetSelectionSheetProps = Readonly<{
   mode: "NORMAL" | "BLIND";
   unresolvedSetIds: readonly SetId[];
   selectedSetId?: SetId;
@@ -154,7 +154,7 @@ type SetSelectionSheetProps = Readonly<{
   onStart: () => void;
 }>;
 
-function SetSelectionSheet({
+export function SetSelectionSheet({
   mode,
   unresolvedSetIds,
   selectedSetId,
@@ -212,7 +212,7 @@ function SetSelectionSheet({
   );
 }
 
-type DeclarationWorkbenchProps = Readonly<{
+export type DeclarationWorkbenchProps = Readonly<{
   declaration: PublicActiveDeclaration;
   declarerName: string;
   teamMembers: readonly TeamAssignmentPlayer[];
@@ -226,7 +226,7 @@ type DeclarationWorkbenchProps = Readonly<{
   onSubmit: () => void;
 }>;
 
-function DeclarationWorkbench({
+export function DeclarationWorkbench({
   declaration,
   declarerName,
   teamMembers,
@@ -316,7 +316,7 @@ function DeclarationWorkbench({
   );
 }
 
-type BlindDeclarationPanelProps = Readonly<{
+export type BlindDeclarationPanelProps = Readonly<{
   view: PlayerGameView;
   teamMembers: readonly TeamAssignmentPlayer[];
   isProcessing: boolean;
@@ -324,7 +324,7 @@ type BlindDeclarationPanelProps = Readonly<{
   onChooseSet: () => void;
 }>;
 
-function BlindDeclarationPanel({
+export function BlindDeclarationPanel({
   view,
   teamMembers,
   isProcessing,
@@ -390,12 +390,12 @@ function BlindDeclarationPanel({
   );
 }
 
-function GameOverPanel({ view }: Readonly<{ view: PlayerGameView }>) {
+export function GameOverPanel({ view }: Readonly<{ view: PlayerGameView }>) {
   const winningLabel = view.winnerTeamId === view.localPlayer.teamId ? "Your team wins" : "The other team wins";
 
   return (
     <section className="game-over-panel" aria-label="Game complete">
-      <span aria-hidden="true">✦</span>
+      <span aria-hidden="true">D</span>
       <p className="eyebrow">Game complete</p>
       <h1>{winningLabel}</h1>
       <p>All nine sets have been resolved. Final score is shown above.</p>
@@ -403,7 +403,7 @@ function GameOverPanel({ view }: Readonly<{ view: PlayerGameView }>) {
   );
 }
 
-const getVisiblePlayerName = (view: PlayerGameView, playerId: PlayerId): string => {
+export const getVisiblePlayerName = (view: PlayerGameView, playerId: PlayerId): string => {
   if (playerId === view.localPlayer.id) return "You";
   return view.visiblePlayers.find((player) => player.id === playerId)?.displayName ?? "That player";
 };
@@ -413,8 +413,12 @@ const getPhaseMessage = (view: PlayerGameView): string | null => {
   return null;
 };
 
-/** The production root's local single-client integration surface. */
-export function GameplayExperience() {
+type GameplayExperienceProps = Readonly<{
+  controls?: "development" | "demo";
+}>;
+
+/** The deterministic single-client integration surface used by development and the public demo. */
+export function GameplayExperience({ controls = "development" }: GameplayExperienceProps = {}) {
   const [gameState, setGameState] = useState(createDeterministicLocalGame);
   const [localPlayerId, setLocalPlayerId] = useState<PlayerId>(DEFAULT_LOCAL_PLAYER_ID);
   const [selectedSourceCardId, setSelectedSourceCardId] = useState<CardId>();
@@ -611,12 +615,14 @@ export function GameplayExperience() {
     ? 0
     : Math.max(0, Math.ceil(activeDeclaration.deadline - clockNow));
 
+  const isDemo = controls === "demo";
+
   return (
-    <main className="game-page">
+    <main className={`game-page${isDemo ? " game-page--demo" : ""}`}>
       <section className="game-surface" aria-label="Declaration game table">
         <header className="game-header">
           <div className="brand-lockup" aria-label="Declaration">
-            <span className="brand-lockup__mark" aria-hidden="true">✦</span>
+            <span className="brand-lockup__mark" aria-hidden="true">D</span>
             <span>DECLARATION</span>
           </div>
           <Button
@@ -745,15 +751,16 @@ export function GameplayExperience() {
         )}
       </section>
 
-      <details className="local-dev-controls">
-        <summary aria-label="Open local development controls">
-          <span aria-hidden="true">⌘</span>
-          <span>Dev</span>
+      <details className={`local-dev-controls${isDemo ? " local-dev-controls--demo" : ""}`}>
+        <summary aria-label={isDemo ? "Open demo seat controls" : "Open local development controls"}>
+          <span aria-hidden="true">{isDemo ? "♟" : "⌘"}</span>
+          <span>{isDemo ? "Switch seat" : "Dev"}</span>
         </summary>
         <div>
-          <Button onClick={restartGame} variant="secondary">Restart deterministic game</Button>
+          <p>{isDemo ? "This sandbox keeps all six seats on this device. Switch players when the turn moves." : "Local deterministic harness"}</p>
+          <Button onClick={restartGame} variant="secondary">{isDemo ? "Restart demo" : "Restart deterministic game"}</Button>
           <label>
-            Local perspective
+            {isDemo ? "Play as" : "Local perspective"}
             <select
               onChange={(event) => changePerspective(event.target.value as PlayerId)}
               value={localPlayerId}

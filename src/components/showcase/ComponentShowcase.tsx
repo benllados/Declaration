@@ -28,7 +28,7 @@ export function ComponentShowcase() {
     <main className="showcase">
       <header className="showcase__masthead">
         <div className="brand-lockup" aria-label="Declaration">
-          <span className="brand-lockup__mark" aria-hidden="true">✦</span>
+          <span className="brand-lockup__mark" aria-hidden="true">D</span>
           <span>DECLARATION</span>
         </div>
         <p>Build 09 <span aria-hidden="true">•</span> Internal component showcase</p>

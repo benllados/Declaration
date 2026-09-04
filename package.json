@@ -9,20 +9,29 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:postgres": "DECLARATION_RUN_POSTGRES_INTEGRATION=1 vitest run tests/integration"
   },
   "dependencies": {
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.2",
+    "@vercel/functions": "^3.9.5",
     "next": "16.3.1",
+    "postgres": "^3.4.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
+    "@testing-library/react": "^16.3.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "24.10.1",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.1",
     "eslint-config-next": "16.3.1",
+    "jsdom": "^26.1.0",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "vitest": "4.1.10"

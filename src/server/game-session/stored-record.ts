@@ -33,6 +33,13 @@ import { isOpaqueId } from "@/lib/multiplayer/action-codec";
 export const ENGINE_VERSION = "declaration-v1" as const;
 export type EngineVersion = typeof ENGINE_VERSION;
 
+/**
+ * Idempotency is deliberately retained for the most recent 128 actions per
+ * game. Clients must retry with the same action id promptly; older retries are
+ * treated as new requests and still pass normal revision validation.
+ */
+export const MAX_PROCESSED_ACTION_RECEIPTS = 128;
+
 export type ProcessedActionReceipt = Readonly<{
   seatId: string;
   actionId: string;
@@ -391,6 +398,9 @@ const decodeSafeActionOutcome = (value: unknown): DecodeResult<SafeActionOutcome
 
 const decodeProcessedActions = (value: unknown): DecodeResult<readonly ProcessedActionReceipt[]> => {
   if (!Array.isArray(value)) return failure("processedActions must be an array.");
+  if (value.length > MAX_PROCESSED_ACTION_RECEIPTS) {
+    return failure(`processedActions may retain at most ${MAX_PROCESSED_ACTION_RECEIPTS} receipts.`);
+  }
   const receipts: ProcessedActionReceipt[] = [];
   for (const [index, item] of value.entries()) {
     const object = decodeObject(item, ["seatId", "actionId", "status", "outcome", "resultingRevision"], `processed action ${index}`);

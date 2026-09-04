@@ -8,7 +8,7 @@ import {
   processAuthoritativeAction,
   readScopedGameView,
 } from "../../src/server/game-session/service";
-import { decodeStoredGameRecord } from "../../src/server/game-session/stored-record";
+import { decodeStoredGameRecord, MAX_PROCESSED_ACTION_RECEIPTS } from "../../src/server/game-session/stored-record";
 import {
   GAME_ID,
   TestServerClock,
@@ -24,7 +24,10 @@ import {
 import { TestGameSessionRepository } from "../support/game-session-repository";
 import { LOCAL_PLAYERS, createDeterministicLocalGame } from "../../src/lib/local-game";
 
-const service = (repository: TestGameSessionRepository, clock: TestServerClock) => ({ repository, clock });
+const service = (repository: TestGameSessionRepository, clock: TestServerClock) => {
+  repository.setClock(clock);
+  return { repository };
+};
 
 const askAction = (actionId: string, expectedRevision: number, state = createDeterministicLocalGame()) => ({
   gameId: GAME_ID,
@@ -276,6 +279,38 @@ describe("Build 12 authority, expiry, revision, and idempotency", () => {
     expect(avery.status).toBe("REJECTED");
     expect(maya.status).toBe("REJECTED");
     expect(declaringRepository.snapshot(GAME_ID).processedActions).toHaveLength(2);
+  });
+
+  it("retains duplicate outcomes only within the bounded receipt window", async () => {
+    const state = createActiveDeclarationState(100);
+    const repository = new TestGameSessionRepository([createRecord(state)]);
+    const clock = new TestServerClock(150);
+    const firstAction = askAction("retention-000", 0, state);
+
+    for (let index = 0; index <= MAX_PROCESSED_ACTION_RECEIPTS; index += 1) {
+      const response = await processAuthoritativeAction(
+        seatFor(LOCAL_PLAYERS.avery),
+        askAction(`retention-${String(index).padStart(3, "0")}`, 0, state),
+        service(repository, clock),
+      );
+      expect(response.status).toBe("REJECTED");
+    }
+
+    expect(repository.snapshot(GAME_ID).processedActions).toHaveLength(MAX_PROCESSED_ACTION_RECEIPTS);
+    const retained = await processAuthoritativeAction(
+      seatFor(LOCAL_PLAYERS.avery),
+      askAction(`retention-${String(MAX_PROCESSED_ACTION_RECEIPTS).padStart(3, "0")}`, 0, state),
+      service(repository, clock),
+    );
+    const retired = await processAuthoritativeAction(
+      seatFor(LOCAL_PLAYERS.avery),
+      firstAction,
+      service(repository, clock),
+    );
+
+    expect(retained.status).toBe("DUPLICATE");
+    expect(retired.status).toBe("REJECTED");
+    expect(repository.snapshot(GAME_ID).processedActions).toHaveLength(MAX_PROCESSED_ACTION_RECEIPTS);
   });
 
   it("keeps duplicate delivery read-only after a Declaration deadline, then resolves expiry on a distinct scoped read", async () => {

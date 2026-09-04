@@ -1,5 +1,6 @@
 import type { NormalPlayGameState } from "../../src/game/engine/normal-play";
 import type { GameSessionRepository, GameSessionTransaction } from "../../src/server/game-session/repository";
+import type { ServerClock } from "../../src/server/game-session/server-clock";
 import { decodeStoredGameRecord, type StoredGameRecord } from "../../src/server/game-session/stored-record";
 
 const cloneRecord = (record: StoredGameRecord): StoredGameRecord => {
@@ -18,9 +19,14 @@ export class TestGameSessionRepository implements GameSessionRepository {
 
   readonly savedRecordReferences: StoredGameRecord[] = [];
   readonly savedStateReferences: NormalPlayGameState[] = [];
+  private clock: ServerClock = { now: async () => 0 };
 
   constructor(records: readonly StoredGameRecord[]) {
     for (const record of records) this.records.set(record.gameId, cloneRecord(record));
+  }
+
+  setClock(clock: ServerClock): void {
+    this.clock = clock;
   }
 
   async transact<T>(gameId: string, operation: (transaction: GameSessionTransaction) => Promise<T>): Promise<T> {
@@ -33,6 +39,7 @@ export class TestGameSessionRepository implements GameSessionRepository {
     await prior;
 
     let pending: StoredGameRecord | null = null;
+    let authoritativeNow: number | undefined;
     const transaction: GameSessionTransaction = {
       load: async () => {
         const record = this.records.get(gameId);
@@ -43,6 +50,10 @@ export class TestGameSessionRepository implements GameSessionRepository {
         this.savedRecordReferences.push(record);
         this.savedStateReferences.push(record.state);
         pending = cloneRecord(record);
+      },
+      now: async () => {
+        if (authoritativeNow === undefined) authoritativeNow = await this.clock.now();
+        return authoritativeNow;
       },
     };
 

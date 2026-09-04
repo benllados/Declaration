@@ -17,21 +17,20 @@ import type {
 } from "@/lib/multiplayer/contracts";
 import { createPlayerGameView } from "@/lib/local-game/player-view";
 import type { GameSessionRepository, GameSessionTransaction } from "./repository";
+import type { SeatAuthenticatedGameSessionRepository } from "./repository";
 import type { SeatIdentity } from "./seat-identity";
-import type { ServerClock } from "./server-clock";
-import type { ProcessedActionReceipt, StoredGameRecord } from "./stored-record";
+import {
+  MAX_PROCESSED_ACTION_RECEIPTS,
+  type ProcessedActionReceipt,
+  type StoredGameRecord,
+} from "./stored-record";
+import { GameSessionAccessError } from "./errors";
 
 export type GameSessionDependencies = Readonly<{
   repository: GameSessionRepository;
-  clock: ServerClock;
 }>;
 
-/** Deliberately generic: callers must not learn whether a game or seat exists. */
-export class GameSessionAccessError extends Error {
-  constructor() {
-    super("Game session access denied.");
-  }
-}
+export { GameSessionAccessError } from "./errors";
 
 const INVALID_ACTION_ID = "invalid-action";
 
@@ -78,10 +77,9 @@ const hasAuthoritativeStateChanged = (
 const resolveExpiry = async (
   record: StoredGameRecord,
   transaction: GameSessionTransaction,
-  clock: ServerClock,
 ): Promise<Readonly<{ record: StoredGameRecord; advanced: boolean }>> => {
   if (record.state.activeDeclaration === null) return { record, advanced: false };
-  const resolution = resolveDeclarationTimeout(record.state, { resolvedAt: clock.now() });
+  const resolution = resolveDeclarationTimeout(record.state, { resolvedAt: await transaction.now() });
   if (!hasAuthoritativeStateChanged(record.state, resolution.state)) return { record, advanced: false };
   const nextRecord = withRecordState(record, resolution.state, record.revision + 1);
   await transaction.save(nextRecord);
@@ -108,7 +106,7 @@ const invokeEngine = (
   record: StoredGameRecord,
   identity: SeatIdentity,
   action: PublicGameAction,
-  clock: ServerClock,
+  now: number,
 ): EngineOperation => {
   if (action.type === "ASK") {
     const resolution = resolveAsk(record.state, {
@@ -122,7 +120,7 @@ const invokeEngine = (
     const resolution = startDeclaration(record.state, {
       declarerId: identity.playerId,
       selectedSetId: action.payload.selectedSetId,
-      startedAt: clock.now(),
+      startedAt: now,
     });
     return { state: resolution.state, outcome: toSafeStartOutcome(resolution.result) };
   }
@@ -130,7 +128,7 @@ const invokeEngine = (
     const resolution = submitDeclaration(record.state, {
       declarerId: identity.playerId,
       assignments: action.payload.assignments,
-      submittedAt: clock.now(),
+      submittedAt: now,
     });
     return { state: resolution.state, outcome: resolution.result };
   }
@@ -162,7 +160,12 @@ const appendReceipt = (
     resultingRevision: revision,
   };
   return {
-    record: withRecordState(record, operation.state, revision, [...record.processedActions, receipt]),
+    record: withRecordState(
+      record,
+      operation.state,
+      revision,
+      [...record.processedActions, receipt].slice(-MAX_PROCESSED_ACTION_RECEIPTS),
+    ),
     receipt,
   };
 };
@@ -181,7 +184,16 @@ export const processAuthoritativeAction = async (
   const action = decoded.value;
   if (action.gameId !== identity.gameId) return validationError(action.actionId, action.expectedRevision);
 
-  return dependencies.repository.transact(action.gameId, async (transaction) => {
+  return dependencies.repository.transact(action.gameId, async (transaction) =>
+    processDecodedAction(identity, action, transaction),
+  );
+};
+
+const processDecodedAction = async (
+  identity: SeatIdentity,
+  action: PublicGameAction,
+  transaction: GameSessionTransaction,
+): Promise<PublicActionResponse> => {
     const loaded = await transaction.load();
     if (loaded === null) throw new GameSessionAccessError();
     getPlayerForSeat(loaded, identity);
@@ -202,7 +214,7 @@ export const processAuthoritativeAction = async (
     // A late submission is intentionally delegated to submitDeclaration so the
     // frozen engine supplies its TIMED_OUT outcome instead of a generic conflict.
     if (action.type !== "SUBMIT_DECLARATION") {
-      const expiry = await resolveExpiry(loaded, transaction, dependencies.clock);
+      const expiry = await resolveExpiry(loaded, transaction);
       if (expiry.advanced) {
         return {
           status: "CONFLICT",
@@ -222,7 +234,7 @@ export const processAuthoritativeAction = async (
       };
     }
 
-    const operation = invokeEngine(loaded, identity, action, dependencies.clock);
+    const operation = invokeEngine(loaded, identity, action, await transaction.now());
     const saved = appendReceipt(loaded, identity, action, operation);
     await transaction.save(saved.record);
     return {
@@ -232,8 +244,25 @@ export const processAuthoritativeAction = async (
       view: projectForSeat(saved.record, identity),
       outcome: saved.receipt.outcome,
     };
-  });
 };
+
+/**
+ * HTTP-only entry point. The repository verifies the hashed cookie under the
+ * same game-row lock that serializes the action, so a credential cannot be
+ * accepted after concurrent rotation, revocation, or expiry.
+ */
+export const processAuthenticatedAction = async (
+  gameId: string,
+  credentialHash: Uint8Array,
+  publicInput: unknown,
+  dependencies: Readonly<{ repository: SeatAuthenticatedGameSessionRepository }>,
+): Promise<PublicActionResponse> =>
+  dependencies.repository.transactAuthenticated(gameId, credentialHash, async (transaction, identity) => {
+    const decoded = decodePublicGameAction(publicInput);
+    if (!decoded.ok) return validationError();
+    if (decoded.value.gameId !== gameId) return validationError(decoded.value.actionId, decoded.value.expectedRevision);
+    return processDecodedAction(identity, decoded.value, transaction);
+  });
 
 /**
  * Reads only the authenticated seat's projection. Expiry is resolved in the
@@ -247,9 +276,38 @@ export const readScopedGameView = async (
     const loaded = await transaction.load();
     if (loaded === null) throw new GameSessionAccessError();
     getPlayerForSeat(loaded, identity);
-    const expiry = await resolveExpiry(loaded, transaction, dependencies.clock);
+    const expiry = await resolveExpiry(loaded, transaction);
     return {
       revision: expiry.record.revision,
       view: projectForSeat(expiry.record, identity),
     };
   });
+
+/**
+ * HTTP scoped reads authenticate from a non-locking snapshot. Only an expired
+ * declaration falls back to the serialized transaction that resolves it.
+ */
+export const readAuthenticatedScopedGameView = async (
+  gameId: string,
+  credentialHash: Uint8Array,
+  dependencies: Readonly<{ repository: SeatAuthenticatedGameSessionRepository }>,
+): Promise<ScopedGameView> => {
+  const snapshot = await dependencies.repository.readAuthenticatedSnapshot(gameId, credentialHash);
+  const activeDeclaration = snapshot.record.state.activeDeclaration;
+  if (activeDeclaration === null || snapshot.now <= activeDeclaration.deadline) {
+    return {
+      revision: snapshot.record.revision,
+      view: projectForSeat(snapshot.record, snapshot.identity),
+    };
+  }
+  return dependencies.repository.transactAuthenticated(gameId, credentialHash, async (transaction, identity) => {
+    const loaded = await transaction.load();
+    if (loaded === null) throw new GameSessionAccessError();
+    getPlayerForSeat(loaded, identity);
+    const expiry = await resolveExpiry(loaded, transaction);
+    return {
+      revision: expiry.record.revision,
+      view: projectForSeat(expiry.record, identity),
+    };
+  });
+};

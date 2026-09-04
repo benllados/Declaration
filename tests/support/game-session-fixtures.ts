@@ -13,7 +13,7 @@ export const GAME_ID = "game-12";
 export class TestServerClock implements ServerClock {
   constructor(private value: number) {}
 
-  now = (): number => this.value;
+  now = async (): Promise<number> => this.value;
 
   set(value: number): void {
     this.value = value;

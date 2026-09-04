@@ -36,10 +36,10 @@ Blue is the normal functional colour. Red is deliberately reserved for Declarati
 
 ## Typography
 
-The system does not add remote font dependencies. It uses a carefully ordered system stack so the app loads reliably:
+The root layout loads `Geist` and `Geist Mono` with `next/font/google`, so the font files are self-hosted in the built application:
 
-- `--font-display`: `Iowan Old Style`, `Baskerville`, `Georgia`, serif. Used sparingly for the wordmark, display headings, and major tabletop moments. It has editorial playing-card character without becoming gothic.
-- `--font-interface`: `Avenir Next`, `Avenir`, `Nunito Sans`, `Trebuchet MS`, sans-serif. Used for names, controls, score, counts, and gameplay labels. It prioritizes mobile readability.
+- `--font-display` and `--font-interface`: `Geist`. Use its confident geometric sans character for the wordmark, headings, controls, score, and gameplay labels.
+- `--font-mono`: `Geist Mono`. Reserve it for compact technical values only.
 
 Avoid all-caps except the wordmark and small eyebrow labels. Interface labels should be direct and comfortably readable rather than technical or tiny.
 
@@ -49,11 +49,11 @@ The spacing scale is `--space-1` through `--space-7`: 4, 8, 12, 16, 24, 32, and 
 
 Radii are intentionally limited:
 
-- `--radius-small` (12px) for buttons and the brand mark.
-- `--radius-medium` (18px) for compact score surfaces.
-- `--radius-large` (28px) for the hand tray and substantial tactile surfaces.
+- `--radius-small` (10px) for buttons and the brand mark.
+- `--radius-medium` (14px) for compact score surfaces.
+- `--radius-large` (20px) for the hand tray and substantial tactile surfaces.
 
-There are three surface shadows: `--shadow-surface`, `--shadow-elevated`, and `--shadow-card`/`--shadow-card-selected`. They are warm, short, and directional enough to suggest physical objects resting on a table—not floaty overlays or neon glow. Base layers are canvas, tabletop, surface, elevated controls/tokens, then selected cards. Components should establish a local stacking context instead of growing a global z-index scale.
+There are three surface shadows: `--shadow-surface`, `--shadow-elevated`, and `--shadow-card`/`--shadow-card-selected`. They are warm, short, and directional enough to suggest physical objects resting on a table—not floaty overlays. Base layers are canvas, tabletop, surface, elevated controls/tokens, then selected cards. Components should establish a local stacking context instead of growing a global z-index scale.
 
 ## Motion
 
@@ -85,7 +85,7 @@ The component preserves the 2:3 physical card ratio and uses `object-fit: contai
 - `declaration` is red for Declaration.
 - `secondary` is a warm neutral surface for quiet supporting actions.
 
-Each has visible focus, tactile press, hover where available, and disabled states. Do not add a generic component-library taxonomy until a product need proves it necessary.
+Each has visible focus, a crisp offset shadow with a short press, hover where available, and disabled states. Do not add a generic component-library taxonomy until a product need proves it necessary.
 
 ### ScoreDisplay
 
