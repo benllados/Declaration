@@ -4,27 +4,40 @@ const postgresFactory = vi.hoisted(() => vi.fn(() => ({})));
 
 vi.mock("postgres", () => ({ default: postgresFactory }));
 
-import { getProvisioningPostgresClient } from "../../src/server/db/postgres";
+import { getPostgresClient, getProvisioningPostgresClient } from "../../src/server/db/postgres";
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("provisioning PostgreSQL client", () => {
-  it("requires verified TLS while preserving session-pooler transaction settings", () => {
+describe("Supabase pooler PostgreSQL clients", () => {
+  it("requires encrypted TLS and never permits plaintext", () => {
+    vi.stubEnv(
+      "DATABASE_URL",
+      "postgresql://declaration_runtime.project_ref:synthetic@localhost:6543/postgres",
+    );
     vi.stubEnv(
       "DECLARATION_PROVISIONING_DATABASE_URL",
-      "postgresql://declaration_provisioner.project_ref:synthetic@localhost:5432/postgres",
+      "postgresql://declaration_provisioner.project_ref:synthetic@localhost:6543/postgres",
     );
 
+    getPostgresClient();
     getProvisioningPostgresClient();
 
-    expect(postgresFactory).toHaveBeenCalledWith(expect.any(String), {
-      ssl: { rejectUnauthorized: true },
+    expect(postgresFactory).toHaveBeenNthCalledWith(1, expect.any(String), {
+      ssl: "require",
+      prepare: false,
+      max: 3,
+      idle_timeout: 10,
+      connect_timeout: 5,
+    });
+    expect(postgresFactory).toHaveBeenNthCalledWith(2, expect.any(String), {
+      ssl: "require",
       prepare: false,
       max: 1,
       idle_timeout: 10,
       connect_timeout: 5,
     });
+    expect(postgresFactory.mock.calls.map(([, options]) => options)).not.toContainEqual(expect.objectContaining({ ssl: false }));
   });
 });
