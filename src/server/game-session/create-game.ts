@@ -83,7 +83,7 @@ export const createPublicGame = async (
   try {
     provisioned = await dependencies.provisioner.createGame({ gameId, state, seats });
   } catch (error) {
-    throw toProvisioningFailure(error, "provisioning_transaction_start");
+    throw toProvisioningFailure(error, "provisioning_transaction_start_unknown");
   }
 
   try {

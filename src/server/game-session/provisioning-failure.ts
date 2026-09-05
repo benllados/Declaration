@@ -1,43 +1,46 @@
 import "server-only";
 
 export type ProvisioningFailureCategory =
-  | "provisioning_database_authentication"
-  | "provisioning_database_permission"
-  | "provisioning_database_schema"
-  | "provisioning_database_connection"
+  | "provisioning_authentication"
+  | "provisioning_tls"
+  | "provisioning_dns"
+  | "provisioning_connection_refused"
+  | "provisioning_timeout"
+  | "provisioning_database_authorization"
   | "provisioning_configuration"
   | "provisioning_input_validation"
-  | "provisioning_transaction_start"
+  | "provisioning_transaction_start_unknown"
   | "provisioning_game_insert"
   | "provisioning_seat_insert"
-  | "provisioning_result_decoding"
-  | "provisioning_failed";
+  | "provisioning_result_decoding";
 
-const PROVISIONING_AUTHENTICATION_CODES: ReadonlySet<string> = new Set(["28000", "28P01"]);
-const PROVISIONING_PERMISSION_CODES: ReadonlySet<string> = new Set(["42501"]);
-const PROVISIONING_SCHEMA_CODES: ReadonlySet<string> = new Set(["3F000", "42P01", "42703"]);
-const PROVISIONING_CONNECTION_CODES: ReadonlySet<string> = new Set([
-  "08000",
-  "08001",
-  "08003",
-  "08004",
-  "08006",
-  "08007",
-  "08P01",
-  "CONNECT_TIMEOUT",
-  "CONNECTION_CLOSED",
-  "CONNECTION_DESTROYED",
-  "CONNECTION_ENDED",
-  "EAI_AGAIN",
-  "ECONNABORTED",
-  "ECONNREFUSED",
-  "ECONNRESET",
-  "EHOSTUNREACH",
-  "ENETUNREACH",
-  "ENOTFOUND",
-  "EPIPE",
-  "ETIMEDOUT",
+const PROVISIONING_AUTHENTICATION_CODES: ReadonlySet<string> = new Set([
+  "28000",
+  "28P01",
+  "AUTH_TYPE_NOT_IMPLEMENTED",
+  "SASL_SIGNATURE_MISMATCH",
 ]);
+const PROVISIONING_TLS_CODES: ReadonlySet<string> = new Set([
+  "CERT_HAS_EXPIRED",
+  "CERT_NOT_YET_VALID",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_GET_ISSUER_CERT",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+]);
+const PROVISIONING_DNS_CODES: ReadonlySet<string> = new Set([
+  "EAI_AGAIN",
+  "EAI_FAIL",
+  "ENOTFOUND",
+]);
+const PROVISIONING_TIMEOUT_CODES: ReadonlySet<string> = new Set([
+  "CONNECT_TIMEOUT",
+  "ERR_SOCKET_CONNECTION_TIMEOUT",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+const MAX_ERROR_NODES = 16;
+const MAX_NESTED_ERRORS = 8;
 
 const errorObject = (value: unknown): object | null =>
   typeof value === "object" && value !== null ? value : null;
@@ -59,11 +62,25 @@ const readCause = (value: object): unknown => {
   }
 };
 
+const readNestedErrors = (value: object): readonly unknown[] => {
+  if (Array.isArray(value)) return value.slice(0, MAX_NESTED_ERRORS);
+  try {
+    const errors = Reflect.get(value, "errors");
+    return Array.isArray(errors) ? errors.slice(0, MAX_NESTED_ERRORS) : [];
+  } catch {
+    return [];
+  }
+};
+
 const categoryForCode = (code: string): ProvisioningFailureCategory | null => {
-  if (PROVISIONING_AUTHENTICATION_CODES.has(code)) return "provisioning_database_authentication";
-  if (PROVISIONING_PERMISSION_CODES.has(code)) return "provisioning_database_permission";
-  if (PROVISIONING_SCHEMA_CODES.has(code)) return "provisioning_database_schema";
-  if (PROVISIONING_CONNECTION_CODES.has(code)) return "provisioning_database_connection";
+  if (PROVISIONING_AUTHENTICATION_CODES.has(code)) return "provisioning_authentication";
+  if (PROVISIONING_TLS_CODES.has(code) || code.startsWith("ERR_TLS_") || code.startsWith("ERR_SSL_")) {
+    return "provisioning_tls";
+  }
+  if (PROVISIONING_DNS_CODES.has(code)) return "provisioning_dns";
+  if (code === "ECONNREFUSED") return "provisioning_connection_refused";
+  if (PROVISIONING_TIMEOUT_CODES.has(code)) return "provisioning_timeout";
+  if (code === "42501") return "provisioning_database_authorization";
   return null;
 };
 
@@ -76,33 +93,38 @@ export class ProvisioningFailure extends Error {
 }
 
 /**
- * Postgres.js errors expose `code` directly, while runtime adapters can wrap
- * those errors in an Error `cause`. Inspect only the bounded code chain.
+ * Postgres.js errors expose `code` directly. Node can group network failures
+ * under an AggregateError or nested `errors` arrays, and adapters can add a
+ * `cause`; inspect only a bounded graph of codes.
  */
-export const classifyProvisioningFailure = (error: unknown): ProvisioningFailureCategory => {
+const findProvisioningFailureCategory = (error: unknown): ProvisioningFailureCategory | null => {
   const seen = new Set<object>();
-  let candidate: unknown = error;
+  const candidates: unknown[] = [error];
 
-  for (let depth = 0; depth < 4; depth += 1) {
+  while (candidates.length > 0 && seen.size < MAX_ERROR_NODES) {
+    const candidate = candidates.shift();
     if (candidate instanceof ProvisioningFailure) return candidate.category;
     const object = errorObject(candidate);
-    if (object === null || seen.has(object)) break;
+    if (object === null || seen.has(object)) continue;
     seen.add(object);
 
     const category = categoryForCode(readStringProperty(object, "code") ?? "");
     if (category !== null) return category;
-    candidate = readCause(object);
+    candidates.push(readCause(object), ...readNestedErrors(object));
   }
 
-  return "provisioning_failed";
+  return null;
 };
+
+/** Classifies an error without exposing its code, message, or nested values. */
+export const classifyProvisioningFailure = (error: unknown): ProvisioningFailureCategory =>
+  findProvisioningFailureCategory(error) ?? "provisioning_transaction_start_unknown";
 
 /** Converts an unknown failure to a stage category without retaining its details. */
 export const toProvisioningFailure = (
   error: unknown,
-  fallbackCategory: Exclude<ProvisioningFailureCategory, "provisioning_failed">,
+  fallbackCategory: ProvisioningFailureCategory,
 ): ProvisioningFailure => {
   if (error instanceof ProvisioningFailure) return error;
-  const category = classifyProvisioningFailure(error);
-  return new ProvisioningFailure(category === "provisioning_failed" ? fallbackCategory : category);
+  return new ProvisioningFailure(findProvisioningFailureCategory(error) ?? fallbackCategory);
 };

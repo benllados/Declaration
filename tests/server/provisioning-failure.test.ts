@@ -15,10 +15,12 @@ const postgresError = (code: string): Error => {
 
 describe("provisioning failure classification", () => {
   it.each([
-    [Object.assign(new Error("synthetic authentication failure"), { code: "28P01" }), "provisioning_database_authentication"],
-    [postgresError("42501"), "provisioning_database_permission"],
-    [Object.assign(new Error("synthetic schema failure"), { code: "42P01" }), "provisioning_database_schema"],
-    [Object.assign(new Error("synthetic connection failure"), { code: "ECONNREFUSED" }), "provisioning_database_connection"],
+    [postgresError("28P01"), "provisioning_authentication"],
+    [postgresError("42501"), "provisioning_database_authorization"],
+    [Object.assign(new Error("synthetic TLS failure"), { code: "ERR_TLS_CERT_ALTNAME_INVALID" }), "provisioning_tls"],
+    [Object.assign(new Error("synthetic DNS failure"), { code: "ENOTFOUND" }), "provisioning_dns"],
+    [Object.assign(new Error("synthetic connection refusal"), { code: "ECONNREFUSED" }), "provisioning_connection_refused"],
+    [Object.assign(new Error("synthetic timeout"), { code: "CONNECT_TIMEOUT" }), "provisioning_timeout"],
   ] as const)("reads code from Error and Postgres.js-shaped error instances", (error, category) => {
     expect(classifyProvisioningFailure(error)).toBe(category);
   });
@@ -28,7 +30,25 @@ describe("provisioning failure classification", () => {
       cause: new Error("synthetic inner wrapper", { cause: postgresError("42501") }),
     });
 
-    expect(classifyProvisioningFailure(error)).toBe("provisioning_database_permission");
+    expect(classifyProvisioningFailure(error)).toBe("provisioning_database_authorization");
+  });
+
+  it("reads a connection code from AggregateError errors", () => {
+    const error = new AggregateError([
+      Object.assign(new Error("synthetic connection refusal"), { code: "ECONNREFUSED" }),
+    ], "synthetic aggregate");
+
+    expect(classifyProvisioningFailure(error)).toBe("provisioning_connection_refused");
+  });
+
+  it("reads a nested errors array without serializing the nested values", () => {
+    const error = Object.assign(new Error("synthetic nested aggregate"), {
+      errors: [new AggregateError([
+        Object.assign(new Error("synthetic DNS failure"), { code: "EAI_AGAIN" }),
+      ], "synthetic nested aggregate")],
+    });
+
+    expect(classifyProvisioningFailure(error)).toBe("provisioning_dns");
   });
 
   it("replaces an unknown error with a stage category without retaining it", () => {

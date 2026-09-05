@@ -50,13 +50,26 @@ describe("Postgres game provisioning diagnostics", () => {
     await expect(provisioner.createGame(invalid)).rejects.toMatchObject({ category: "provisioning_input_validation" });
   });
 
-  it("classifies a failure before a transaction callback begins", async () => {
+  it("classifies an unrecognized failure before a transaction callback begins", async () => {
     const provisioner = new PostgresGameProvisioner(fakeSql(
       () => [],
       async () => { throw new Error("synthetic transaction startup failure"); },
     ));
 
-    await expect(provisioner.createGame(input())).rejects.toMatchObject({ category: "provisioning_transaction_start" });
+    await expect(provisioner.createGame(input())).rejects.toMatchObject({ category: "provisioning_transaction_start_unknown" });
+  });
+
+  it("preserves a connection category inside an AggregateError from sql.begin", async () => {
+    const provisioner = new PostgresGameProvisioner(fakeSql(
+      () => [],
+      async () => {
+        throw new AggregateError([
+          Object.assign(new Error("synthetic connection refusal"), { code: "ECONNREFUSED" }),
+        ], "synthetic connection aggregate");
+      },
+    ));
+
+    await expect(provisioner.createGame(input())).rejects.toMatchObject({ category: "provisioning_connection_refused" });
   });
 
   it("classifies a game insert failure", async () => {

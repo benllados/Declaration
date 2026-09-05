@@ -123,11 +123,13 @@ describe("public game creation route", () => {
   });
 
   it.each([
-    ["28P01", "provisioning_database_authentication"],
-    ["42501", "provisioning_database_permission"],
-    ["42P01", "provisioning_database_schema"],
-    ["ECONNREFUSED", "provisioning_database_connection"],
-    ["42P99", "provisioning_transaction_start"],
+    ["28P01", "provisioning_authentication"],
+    ["42501", "provisioning_database_authorization"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", "provisioning_tls"],
+    ["ENOTFOUND", "provisioning_dns"],
+    ["ECONNREFUSED", "provisioning_connection_refused"],
+    ["ETIMEDOUT", "provisioning_timeout"],
+    ["42P99", "provisioning_transaction_start_unknown"],
   ] as const)("logs only the category for provisioning error code %s", async (code, category) => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
     createGame.mockRejectedValue(Object.assign(new Error("database failure"), { code }));
@@ -171,6 +173,6 @@ describe("public game creation route", () => {
     }));
 
     expect(response.status).toBe(500);
-    expect(errorLog).toHaveBeenCalledWith({ category: "provisioning_database_permission" });
+    expect(errorLog).toHaveBeenCalledWith({ category: "provisioning_database_authorization" });
   });
 });

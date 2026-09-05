@@ -151,7 +151,7 @@ export class PostgresGameProvisioner {
         return { gameId: input.gameId, seats };
       })) as Readonly<{ gameId: string; seats: readonly ProvisionedSeat[] }>;
     } catch (error) {
-      throw toProvisioningFailure(error, "provisioning_transaction_start");
+      throw toProvisioningFailure(error, "provisioning_transaction_start_unknown");
     }
   }
 
