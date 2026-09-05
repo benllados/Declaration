@@ -6,9 +6,13 @@ import type { GameProvisioningInput, ProvisionedSeat } from "../../src/server/ga
 import { configureRateLimitRuntimeForTests, InMemoryRateLimiter, type RateLimiter } from "../../src/server/security/rate-limit";
 
 let createGame: ReturnType<typeof vi.fn>;
+let runtimeFailure: Error | undefined;
 
 vi.mock("@/server/game-session/provisioning-runtime", () => ({
-  getGameProvisioningRuntime: () => ({ provisioner: { createGame } }),
+  getGameProvisioningRuntime: () => {
+    if (runtimeFailure !== undefined) throw runtimeFailure;
+    return { provisioner: { createGame } };
+  },
 }));
 
 import { POST } from "../../src/app/api/games/route";
@@ -19,6 +23,7 @@ const request = (init: RequestInit): NextRequest => new NextRequest("http://loca
 beforeEach(() => {
   vi.stubEnv("DECLARATION_APP_ORIGIN", "http://localhost:3000");
   configureRateLimitRuntimeForTests(new InMemoryRateLimiter());
+  runtimeFailure = undefined;
   createGame = vi.fn(async (input: GameProvisioningInput): Promise<Readonly<{ gameId: string; seats: readonly ProvisionedSeat[] }>> => ({
     gameId: input.gameId,
     seats: input.seats.map((seat, index) => ({
@@ -122,7 +127,7 @@ describe("public game creation route", () => {
     ["42501", "provisioning_database_permission"],
     ["42P01", "provisioning_database_schema"],
     ["ECONNREFUSED", "provisioning_database_connection"],
-    ["42P99", "provisioning_failed"],
+    ["42P99", "provisioning_transaction_start"],
   ] as const)("logs only the category for provisioning error code %s", async (code, category) => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
     createGame.mockRejectedValue(Object.assign(new Error("database failure"), { code }));
@@ -135,5 +140,37 @@ describe("public game creation route", () => {
 
     expect(response.status).toBe(500);
     expect(errorLog.mock.calls).toEqual([[{ category }]]);
+  });
+
+  it("logs only configuration when provisioning client initialization fails", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    runtimeFailure = new Error("synthetic provisioning client initialization failure");
+
+    const response = await POST(request({
+      method: "POST",
+      headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+      body: JSON.stringify({ playerNames: names }),
+    }));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ code: "GAME_SESSION_UNAVAILABLE" });
+    expect(createGame).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledWith({ category: "provisioning_configuration" });
+  });
+
+  it("logs a database code nested under an Error cause", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    createGame.mockRejectedValue(new Error("synthetic wrapper", {
+      cause: Object.assign(new Error("synthetic database failure"), { code: "42501" }),
+    }));
+
+    const response = await POST(request({
+      method: "POST",
+      headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+      body: JSON.stringify({ playerNames: names }),
+    }));
+
+    expect(response.status).toBe(500);
+    expect(errorLog).toHaveBeenCalledWith({ category: "provisioning_database_permission" });
   });
 });

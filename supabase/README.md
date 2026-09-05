@@ -27,10 +27,10 @@ the migration (or its final grants block) after the roles exist:
 
 Do not use `anon`, `authenticated`, `service_role`, browser credentials, or a
 Supabase Data API key for this transport. Place only the runtime transaction
-pooler URI in `DATABASE_URL`; use the direct URI for the provisioner role in
-`DECLARATION_PROVISIONING_DATABASE_URL`, and use a database-owner direct URI
-exclusively as `MIGRATION_DATABASE_URL` for migration tooling. None belongs in
-source control or a `NEXT_PUBLIC_*` variable.
+pooler URI in `DATABASE_URL`; use the provisioner session-pooler URI (port
+5432) in `DECLARATION_PROVISIONING_DATABASE_URL`, and use a database-owner
+direct URI exclusively as `MIGRATION_DATABASE_URL` for migration tooling. None
+belongs in source control or a `NEXT_PUBLIC_*` variable.
 
 ## Local integration tests
 

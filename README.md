@@ -83,9 +83,10 @@ connection-string requirements. Do not point this command at a hosted or
 production database.
 
 To use creation and invitation redemption locally or in production, configure
-`DECLARATION_PROVISIONING_DATABASE_URL` with the direct connection for the
-separately scoped `declaration_provisioner` role. Gameplay uses only the
-transaction-pooler `DATABASE_URL` for `declaration_runtime`.
+`DECLARATION_PROVISIONING_DATABASE_URL` with the Supabase session-pooler
+connection (port 5432) for the separately scoped `declaration_provisioner`
+role. Gameplay uses only the transaction-pooler `DATABASE_URL` for
+`declaration_runtime`.
 
 ## Production transport requirements
 

@@ -56,6 +56,16 @@ describe("public game creation", () => {
     random.mockRestore();
   });
 
+  it("classifies a secure deal-generation failure before provisioning", async () => {
+    const fake = createProvisioner();
+
+    await expect(createPublicGame({ playerNames }, {
+      provisioner: fake.provisioner,
+      random: () => { throw new Error("synthetic deal-generation failure"); },
+    })).rejects.toMatchObject({ category: "provisioning_input_validation" });
+    expect(fake.received()).toBeUndefined();
+  });
+
   it.each([
     {},
     { playerNames: playerNames.slice(0, 5) },

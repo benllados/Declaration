@@ -7,6 +7,7 @@ import type { Random } from "@/game/engine/deal";
 import { createPlayerId, type PlayerSetup } from "@/game/types/player";
 
 import type { PostgresGameProvisioner } from "./provisioning";
+import { toProvisioningFailure } from "./provisioning-failure";
 import { secureRandom } from "./secure-random";
 
 const PLAYER_COUNT = 6;
@@ -57,25 +58,45 @@ export const createPublicGame = async (
   dependencies: Readonly<{ provisioner: GameProvisioner; random?: Random }>,
 ): Promise<CreatedGame> => {
   const names = decodePlayerNames(input);
-  const gameId = createOpaqueId("game");
-  const players: readonly PlayerSetup[] = Object.freeze(names.map((displayName, index) => Object.freeze({
-    id: createPlayerId(createOpaqueId("player")),
-    displayName,
-    teamId: index < TEAM_SIZE ? "TEAM_A" : "TEAM_B",
-  })));
-  const seats = players.map((player) => Object.freeze({
-    seatId: createOpaqueId("seat"),
-    playerId: player.id,
-  }));
-  const state = initializeNormalPlayGame({ players, initialTurnOwner: players[0].id }, dependencies.random ?? secureRandom);
-  const provisioned = await dependencies.provisioner.createGame({ gameId, state, seats });
-  const namesByPlayerId = new Map(players.map((player) => [player.id, player.displayName]));
+  let gameId: string;
+  let players: readonly PlayerSetup[];
+  let seats: readonly Readonly<{ seatId: string; playerId: PlayerSetup["id"] }>[];
+  let state: ReturnType<typeof initializeNormalPlayGame>;
 
-  return Object.freeze({
-    gameId,
-    invitations: Object.freeze(provisioned.seats.map((seat) => Object.freeze({
-      displayName: namesByPlayerId.get(seat.playerId) ?? "Player",
-      inviteToken: seat.inviteToken,
-    }))),
-  });
+  try {
+    gameId = createOpaqueId("game");
+    players = Object.freeze(names.map((displayName, index) => Object.freeze({
+      id: createPlayerId(createOpaqueId("player")),
+      displayName,
+      teamId: index < TEAM_SIZE ? "TEAM_A" : "TEAM_B",
+    })));
+    seats = players.map((player) => Object.freeze({
+      seatId: createOpaqueId("seat"),
+      playerId: player.id,
+    }));
+    state = initializeNormalPlayGame({ players, initialTurnOwner: players[0].id }, dependencies.random ?? secureRandom);
+  } catch (error) {
+    throw toProvisioningFailure(error, "provisioning_input_validation");
+  }
+
+  let provisioned: Awaited<ReturnType<GameProvisioner["createGame"]>>;
+  try {
+    provisioned = await dependencies.provisioner.createGame({ gameId, state, seats });
+  } catch (error) {
+    throw toProvisioningFailure(error, "provisioning_transaction_start");
+  }
+
+  try {
+    const namesByPlayerId = new Map(players.map((player) => [player.id, player.displayName]));
+
+    return Object.freeze({
+      gameId,
+      invitations: Object.freeze(provisioned.seats.map((seat) => Object.freeze({
+        displayName: namesByPlayerId.get(seat.playerId) ?? "Player",
+        inviteToken: seat.inviteToken,
+      }))),
+    });
+  } catch (error) {
+    throw toProvisioningFailure(error, "provisioning_result_decoding");
+  }
 };

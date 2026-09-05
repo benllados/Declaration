@@ -4,6 +4,10 @@ import { getDeclarationAppOrigin } from "@/server/config/environment";
 import { CreateGameValidationError, createPublicGame } from "@/server/game-session/create-game";
 import { RateLimitConfigurationError, RateLimitUnavailableError } from "@/server/game-session/errors";
 import { gameJson, rateLimited, readLimitedJson, toSafeGameErrorResponse } from "@/server/game-session/http";
+import {
+  classifyProvisioningFailure,
+  toProvisioningFailure,
+} from "@/server/game-session/provisioning-failure";
 import { getGameProvisioningRuntime } from "@/server/game-session/provisioning-runtime";
 import {
   limitRequestSource,
@@ -17,57 +21,6 @@ const MAX_CREATE_BODY_BYTES = 4 * 1024;
 
 const isJsonContentType = (value: string | null): boolean =>
   value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
-
-type ProvisioningFailureCategory =
-  | "provisioning_database_authentication"
-  | "provisioning_database_permission"
-  | "provisioning_database_schema"
-  | "provisioning_database_connection"
-  | "provisioning_failed";
-
-const PROVISIONING_AUTHENTICATION_CODES: ReadonlySet<string> = new Set(["28000", "28P01"]);
-const PROVISIONING_PERMISSION_CODES: ReadonlySet<string> = new Set(["42501"]);
-const PROVISIONING_SCHEMA_CODES: ReadonlySet<string> = new Set(["3F000", "42P01", "42703"]);
-const PROVISIONING_CONNECTION_CODES: ReadonlySet<string> = new Set([
-  "08000",
-  "08001",
-  "08003",
-  "08004",
-  "08006",
-  "08007",
-  "08P01",
-  "CONNECT_TIMEOUT",
-  "CONNECTION_CLOSED",
-  "CONNECTION_DESTROYED",
-  "CONNECTION_ENDED",
-  "EAI_AGAIN",
-  "ECONNABORTED",
-  "ECONNREFUSED",
-  "ECONNRESET",
-  "EHOSTUNREACH",
-  "ENETUNREACH",
-  "ENOTFOUND",
-  "EPIPE",
-  "ETIMEDOUT",
-]);
-
-const getErrorCode = (error: unknown): string | null => {
-  if (typeof error !== "object" || error === null || !("code" in error)) return null;
-  return typeof error.code === "string" ? error.code : null;
-};
-
-const classifyProvisioningFailure = (error: unknown): ProvisioningFailureCategory => {
-  const code = getErrorCode(error);
-
-  if (code !== null) {
-    if (PROVISIONING_AUTHENTICATION_CODES.has(code)) return "provisioning_database_authentication";
-    if (PROVISIONING_PERMISSION_CODES.has(code)) return "provisioning_database_permission";
-    if (PROVISIONING_SCHEMA_CODES.has(code)) return "provisioning_database_schema";
-    if (PROVISIONING_CONNECTION_CODES.has(code)) return "provisioning_database_connection";
-  }
-
-  return "provisioning_failed";
-};
 
 const logProvisioningFailure = (error: unknown): void => {
   console.error({ category: classifyProvisioningFailure(error) });
@@ -103,8 +56,17 @@ export const POST = async (request: NextRequest): Promise<Response> => {
   const parsed = await readLimitedJson(request, MAX_CREATE_BODY_BYTES);
   if (!parsed.ok) return gameJson({ code: parsed.status === 413 ? "PAYLOAD_TOO_LARGE" : "VALIDATION_ERROR" }, parsed.status);
 
+  let runtime: ReturnType<typeof getGameProvisioningRuntime>;
   try {
-    const game = await createPublicGame(parsed.value, getGameProvisioningRuntime());
+    runtime = getGameProvisioningRuntime();
+  } catch (error) {
+    const failure = toProvisioningFailure(error, "provisioning_configuration");
+    logProvisioningFailure(failure);
+    return toSafeGameErrorResponse(failure);
+  }
+
+  try {
+    const game = await createPublicGame(parsed.value, runtime);
     return gameJson({
       gameId: game.gameId,
       invitations: game.invitations.map((invitation) => ({

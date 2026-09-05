@@ -7,6 +7,7 @@ import type { Sql } from "postgres";
 
 import { getSeatTtlSeconds } from "@/server/config/environment";
 import { GameSessionAccessError } from "./errors";
+import { toProvisioningFailure } from "./provisioning-failure";
 import {
   generateSeatCredential,
   generateSeatInviteToken,
@@ -81,40 +82,77 @@ export class PostgresGameProvisioner {
   constructor(private readonly sql: Sql) {}
 
   async createGame(input: GameProvisioningInput): Promise<Readonly<{ gameId: string; seats: readonly ProvisionedSeat[] }>> {
-    validateInput(input);
-    const ttl = validateTtl(input.seatTtlSeconds ?? getSeatTtlSeconds());
-    // Initial credential hashes are deliberately unusable: redemption rotates
-    // them to a new secret that has never appeared in an invite URL.
-    const credentialHashes = input.seats.map(() => hashSeatCredential(generateSeatCredential()));
-    const inviteTokens = input.seats.map(generateSeatInviteToken);
-    const inviteHashes = inviteTokens.map(hashSeatCredential);
+    try {
+      validateInput(input);
+    } catch (error) {
+      throw toProvisioningFailure(error, "provisioning_input_validation");
+    }
 
-    return (await this.sql.begin(async (transactionSql) => {
-      // See postgres-repository: the runtime transaction is a callable SQL tag.
-      const sql = transactionSql as unknown as Sql;
-      await sql`
-        insert into declaration_private.games (game_id, engine_version, revision, state)
-        values (${input.gameId}, ${ENGINE_VERSION}, 0, ${sql.json(input.state)})
-      `;
-      const seats: ProvisionedSeat[] = [];
-      for (const [index, seat] of input.seats.entries()) {
-        const rows = await sql<Readonly<{ expires_at: unknown }[]> >`
-          insert into declaration_private.game_seats
-            (seat_id, game_id, player_id, credential_hash, invite_token_hash, credential_version, expires_at)
-          values
-            (${seat.seatId}, ${input.gameId}, ${seat.playerId}, ${credentialHashes[index]}, ${inviteHashes[index]}, 1,
-             clock_timestamp() + (${ttl} * interval '1 second'))
-          returning expires_at
-        `;
-        seats.push({
-          seatId: seat.seatId,
-          playerId: seat.playerId,
-          inviteToken: inviteTokens[index],
-          expiresAt: asDate(rows[0]?.expires_at),
-        });
-      }
-      return { gameId: input.gameId, seats };
-    })) as Readonly<{ gameId: string; seats: readonly ProvisionedSeat[] }>;
+    let ttl: number;
+    try {
+      ttl = validateTtl(input.seatTtlSeconds ?? getSeatTtlSeconds());
+    } catch (error) {
+      throw toProvisioningFailure(error, input.seatTtlSeconds === undefined
+        ? "provisioning_configuration"
+        : "provisioning_input_validation");
+    }
+
+    let credentialHashes: Buffer[];
+    let inviteTokens: string[];
+    let inviteHashes: Buffer[];
+    try {
+      // Initial credential hashes are deliberately unusable: redemption rotates
+      // them to a new secret that has never appeared in an invite URL.
+      credentialHashes = input.seats.map(() => hashSeatCredential(generateSeatCredential()));
+      inviteTokens = input.seats.map(generateSeatInviteToken);
+      inviteHashes = inviteTokens.map(hashSeatCredential);
+    } catch (error) {
+      throw toProvisioningFailure(error, "provisioning_input_validation");
+    }
+
+    try {
+      return (await this.sql.begin(async (transactionSql) => {
+        // See postgres-repository: the runtime transaction is a callable SQL tag.
+        const sql = transactionSql as unknown as Sql;
+        try {
+          await sql`
+            insert into declaration_private.games (game_id, engine_version, revision, state)
+            values (${input.gameId}, ${ENGINE_VERSION}, 0, ${sql.json(input.state)})
+          `;
+        } catch (error) {
+          throw toProvisioningFailure(error, "provisioning_game_insert");
+        }
+        const seats: ProvisionedSeat[] = [];
+        for (const [index, seat] of input.seats.entries()) {
+          let rows: readonly Readonly<{ expires_at: unknown }>[];
+          try {
+            rows = await sql<Readonly<{ expires_at: unknown }[]> >`
+              insert into declaration_private.game_seats
+                (seat_id, game_id, player_id, credential_hash, invite_token_hash, credential_version, expires_at)
+              values
+                (${seat.seatId}, ${input.gameId}, ${seat.playerId}, ${credentialHashes[index]}, ${inviteHashes[index]}, 1,
+                 clock_timestamp() + (${ttl} * interval '1 second'))
+              returning expires_at
+            `;
+          } catch (error) {
+            throw toProvisioningFailure(error, "provisioning_seat_insert");
+          }
+          try {
+            seats.push({
+              seatId: seat.seatId,
+              playerId: seat.playerId,
+              inviteToken: inviteTokens[index],
+              expiresAt: asDate(rows[0]?.expires_at),
+            });
+          } catch (error) {
+            throw toProvisioningFailure(error, "provisioning_result_decoding");
+          }
+        }
+        return { gameId: input.gameId, seats };
+      })) as Readonly<{ gameId: string; seats: readonly ProvisionedSeat[] }>;
+    } catch (error) {
+      throw toProvisioningFailure(error, "provisioning_transaction_start");
+    }
   }
 
   async redeemInvitation(

@@ -23,10 +23,13 @@ export const getPostgresClient = (): Sql => {
   return client;
 };
 
-/** A separate, least-privileged direct connection for provisioning only. */
+/** A separate, least-privileged connection for provisioning only. */
 export const getProvisioningPostgresClient = (): Sql => {
   if (provisioningClient !== undefined) return provisioningClient;
   provisioningClient = postgres(getProvisioningDatabaseUrl(), {
+    // Do not permit a provisioning credential over an unverified connection,
+    // even when a hosted pooler accepts plaintext PostgreSQL traffic.
+    ssl: { rejectUnauthorized: true },
     prepare: false,
     max: 1,
     idle_timeout: 10,

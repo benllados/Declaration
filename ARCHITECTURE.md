@@ -36,6 +36,6 @@ Automated unit tests will verify game rules and state transitions. Tests should 
 The private `declaration_private` schema stores games, seats, and action
 receipts. Browser/Data API roles receive no access. `declaration_runtime` uses
 the pooled `DATABASE_URL` for ordinary gameplay, while
-`declaration_provisioner` uses a direct connection for game creation,
+`declaration_provisioner` uses a session-pooler connection for game creation,
 invitation redemption, and credential recovery. See `supabase/README.md` for
 role setup.
